@@ -1,4 +1,2 @@
 [workspace]
-members = [
-    "programs/*"
-]
+members = ["Bridge", "WPOKT", "WPokt"]
