@@ -10,6 +10,9 @@ use solana_program::{
     pubkey::Pubkey,
 };
 use std::collections::BTreeMap;
+use std::mem;
+use solana_program::program_pack::Pack;
+
 pub struct Processor {}
 impl Processor {
     pub fn process(
@@ -95,7 +98,12 @@ fn construct(
         BridgeError::NotWritable.into(),
         "Bridge account is not writeable.",
     )?;
-    let mut bridge_data = Bridge::try_from_slice(&bridge_account.data.borrow())?;
+    
+
+    // Deserialize account data into a structure
+    msg!("Processor -- Bridge Size: {}", &bridge_account.data.borrow().len());
+    let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    
     assert_with_msg(
         !bridge_data.is_initialized,
         ProgramError::AccountAlreadyInitialized,
@@ -109,15 +117,19 @@ fn construct(
     bridge_data.chain_id = *_chain_id;
     bridge_data.verify_address = *_verify_address;
     bridge_data.is_initialized = true;
-    bridge_data.serialize(&mut &mut bridge_account.data.borrow_mut()[..])?;
+    
+    // Serialize the structure and put it back to account data    
+    bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
 
+    /*
     msg!("Validating Claimed Account");
-    let mut claimed_account = next_account_info(account_info_iter)?;
+    let claimed_account = next_account_info(account_info_iter)?;
     let mut claimed_data = ClaimedDictionary::try_from_slice(&claimed_account.data.borrow())?;
     msg!("Init Claimed Data dictionary.");
     claimed_data.claimed_dictionary = BTreeMap::new();
     claimed_data.is_initialized = true;
 
+    
     // claimed_data.claimed_dictionary.insert(1, true);
     claimed_data
         .claimed_dictionary
@@ -126,6 +138,7 @@ fn construct(
     // inner_dict.or_insert(1, true);
     msg!("Serializing Claimed Data.");
     claimed_data.serialize(&mut &mut claimed_account.data.borrow_mut()[..])?;
+    */
 
     Ok(())
 }
