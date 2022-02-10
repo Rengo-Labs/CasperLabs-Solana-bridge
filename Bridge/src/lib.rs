@@ -56,7 +56,7 @@ mod test {
         );
 
         let mut claimed_account_lamports = 0;
-        let mut claimed_account_data = vec![0; 1024];
+        let mut claimed_account_data = vec![0; 10240];
         let claimed_account = AccountInfo::new(
             &claimed_account_key,
             false,
@@ -86,24 +86,24 @@ mod test {
 
         process_instruction(&program_id, &accounts, &instruction_data).unwrap();
 
-        // assert_eq!(
-        //     Bridge::try_from_slice(&accounts[1].data.borrow())
-        //         .unwrap()
-        //         .is_initialized,
-        //     true,
-        // );
-        // assert_eq!(
-        //     Bridge::try_from_slice(&accounts[1].data.borrow())
-        //         .unwrap()
-        //         .owner,
-        //     owner_account_key,
-        // );
-        // assert_eq!(
-        //     Bridge::try_from_slice(&accounts[1].data.borrow())
-        //         .unwrap()
-        //         .chain_id,
-        //     chain_id
-        // );
+        assert_eq!(
+            Bridge::unpack_from_slice(&accounts[1].data.borrow())
+                .unwrap()
+                .is_initialized,
+            true,
+        );
+        assert_eq!(
+            Bridge::unpack_from_slice(&accounts[1].data.borrow())
+                .unwrap()
+                .owner,
+            owner_account_key,
+        );
+        assert_eq!(
+            Bridge::unpack_from_slice(&accounts[1].data.borrow())
+                .unwrap()
+                .chain_id,
+            chain_id
+        );
 
         // assert_eq!(
         //     ClaimedDictionary::try_from_slice(&accounts[2].data.borrow())

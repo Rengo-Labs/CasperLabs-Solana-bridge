@@ -3,11 +3,9 @@ use solana_program::{program_pack::{IsInitialized, Pack, Sealed}, pubkey::Pubkey
 use std::collections::BTreeMap;
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
 
-// use solana_program::{
-//     program_pack::{IsInitialized, Pack, Sealed},
-//     program_error::ProgramError,
-//     pubkey::Pubkey,
-// };
+const INITIALIZED_BYTES: usize = 1;
+const TRACKING_CHUNK_LENGTH: usize = 4;
+const TRACKING_CHUNK_BYTES: usize = 10235;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct ConstructorArgs {
@@ -16,47 +14,6 @@ pub struct ConstructorArgs {
     pub chain_id: u64,
     pub stable_fee: u64,
 }
-
-
-/*
-
-pub struct Escrow {
-    pub is_initialized: bool,
-    pub initializer_pubkey: Pubkey,
-    pub temp_token_account_pubkey: Pubkey,
-    pub initializer_token_to_receive_account_pubkey: Pubkey,
-    pub expected_amount: u64,
-}
-
-use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
-...
-impl Pack for Escrow {
-    const LEN: usize = 105;
-    fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
-        let src = array_ref![src, 0, Escrow::LEN];
-        let (
-            is_initialized,
-            initializer_pubkey,
-            temp_token_account_pubkey,
-            initializer_token_to_receive_account_pubkey,
-            expected_amount,
-        ) = array_refs![src, 1, 32, 32, 32, 8];
-        let is_initialized = match is_initialized {
-            [0] => false,
-            [1] => true,
-            _ => return Err(ProgramError::InvalidAccountData),
-        };
-
-        Ok(Escrow {
-            is_initialized,
-            initializer_pubkey: Pubkey::new_from_array(*initializer_pubkey),
-            temp_token_account_pubkey: Pubkey::new_from_array(*temp_token_account_pubkey),
-            initializer_token_to_receive_account_pubkey: Pubkey::new_from_array(*initializer_token_to_receive_account_pubkey),
-            expected_amount: u64::from_le_bytes(*expected_amount),
-        })
-    }
-}
-*/
 
 // #[repr(packed)]
 //#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
@@ -185,18 +142,71 @@ impl IsInitialized for Bridge {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+//#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct ClaimedDictionary {
     // total size = 10240 bytes = 10Mb
     // spans entire data field of account
     pub is_initialized: bool, // 1 byte
     pub claimed_dictionary: BTreeMap<u64, BTreeMap<u64, bool>>,
 }
+impl Sealed for ClaimedDictionary {}
+
+impl Pack for ClaimedDictionary {
+
+    const LEN: usize = 10240;       // total size 10MB - 10240 Bytes
+
+    // for deserialization
+    fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
+
+        let src = array_ref![src, 0, ClaimedDictionary::LEN];
+        let (is_initialized_src, hmap_len, hmap_src) = array_refs![
+            src,
+            INITIALIZED_BYTES,
+            TRACKING_CHUNK_LENGTH,
+            TRACKING_CHUNK_BYTES
+        ];
+        let is_initialized = match is_initialized_src {
+            [0] => false,
+            [1] => true,
+            _ => panic!(),
+        };
+        let mut map_dser = BTreeMap::<u64, BTreeMap<u64, bool>>::new();
+        let hmap_length = u32::from_le_bytes(*hmap_len) as usize;
+        if hmap_length > 0 {
+            map_dser = BTreeMap::<u64, BTreeMap<u64, bool>>::try_from_slice(&hmap_src[0..hmap_length]).unwrap()
+        }
+        Ok (Self {
+            is_initialized,
+            claimed_dictionary: map_dser,
+        })
+    }
+
+    // for serialization
+    fn pack_into_slice(&self, dst: &mut [u8]) {
+
+        let dst = array_mut_ref![dst, 0, ClaimedDictionary::LEN];
+
+        let (is_initialized_dst, hmap_len, hmap_dst) = mut_array_refs![
+            dst,
+            INITIALIZED_BYTES,
+            TRACKING_CHUNK_LENGTH,
+            TRACKING_CHUNK_BYTES
+        ];
+
+        is_initialized_dst[0] = self.is_initialized as u8;
+        let data_ser = self.claimed_dictionary.try_to_vec().unwrap();
+        //hmap_len[..].copy_from_slice(&transform_u32_to_array_of_u8(data_ser.len() as u32));
+        hmap_len[..].copy_from_slice(&(data_ser.len() as u32).to_le_bytes());
+        hmap_dst[..data_ser.len()].copy_from_slice(&data_ser);
+    }
+}
+
 impl IsInitialized for ClaimedDictionary {
     fn is_initialized(&self) -> bool {
         self.is_initialized
     }
 }
+
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct TokenListDictionary {
     // total size = 10240 bytes = 10Mb

@@ -121,24 +121,26 @@ fn construct(
     // Serialize the structure and put it back to account data    
     bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
 
-    /*
+    
     msg!("Validating Claimed Account");
     let claimed_account = next_account_info(account_info_iter)?;
-    let mut claimed_data = ClaimedDictionary::try_from_slice(&claimed_account.data.borrow())?;
+    let mut claimed_data = ClaimedDictionary::unpack_from_slice(&claimed_account.data.borrow())?;
     msg!("Init Claimed Data dictionary.");
     claimed_data.claimed_dictionary = BTreeMap::new();
     claimed_data.is_initialized = true;
 
-    
+    // Fix the commented code below -- serialization and deserialization is working fine for this struct
+
     // claimed_data.claimed_dictionary.insert(1, true);
-    claimed_data
-        .claimed_dictionary
-        .insert(1, BTreeMap::new()).unwrap();
-    let _ = claimed_data.claimed_dictionary.get_mut(&1).unwrap().insert(1, true).unwrap();
+    // claimed_data
+    //     .claimed_dictionary
+    //     .insert(1, BTreeMap::new()).unwrap();
+    // let _ = claimed_data.claimed_dictionary.get_mut(&1).unwrap().insert(1, true).unwrap();
     // inner_dict.or_insert(1, true);
+
     msg!("Serializing Claimed Data.");
-    claimed_data.serialize(&mut &mut claimed_account.data.borrow_mut()[..])?;
-    */
+    claimed_data.pack_into_slice(&mut &mut claimed_account.data.borrow_mut()[..]);
+    
 
     Ok(())
 }
