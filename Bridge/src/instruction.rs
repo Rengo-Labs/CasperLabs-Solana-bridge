@@ -6,7 +6,7 @@ pub enum BridgeInstruction {
     /// Initialize storage accounts for Bridge
     ///
     /// Accounts expected
-    /// 0. `[signer]` The account of person initializing bridge
+    /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[writeable]` The account used as global storage of bridge
     /// 2. `[writeable]` The account used as 'claimed' dictionary
     /// 3. `[writeable]` The account used as 'token_list' dictionary

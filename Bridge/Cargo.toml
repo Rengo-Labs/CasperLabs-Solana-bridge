@@ -21,3 +21,4 @@ solana-sdk = "1.9.5"
 
 [lib]
 crate-type = ["cdylib", "lib"]
+name = "bridge"
