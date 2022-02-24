@@ -11,6 +11,7 @@ const INITIALIZED_BYTES: usize = 1;
 const TRACKING_CHUNK_LENGTH: usize = 4;
 const TRACKING_CHUNK_BYTES: usize = 10235;
 
+#[derive(Debug, Default, Clone)]
 pub struct Bridge {
     // total size = (8*6) + (32*6) + 1 = 241 bytes
     pub is_initialized: bool,                  // 1 byte
@@ -130,7 +131,7 @@ impl IsInitialized for Bridge {
     }
 }
 
-//#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct ClaimedDictionary {
     // total size = 10240 bytes = 10Mb
     // spans entire data field of account
@@ -195,7 +196,7 @@ impl IsInitialized for ClaimedDictionary {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct TokenListDictionary {
     // total size = 10240 bytes = 10Mb
     // spans entire data field of account
@@ -255,7 +256,7 @@ impl Pack for TokenListDictionary {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct DailyTokenClaimsDictionary {
     // total size = 10240 bytes = 10Mb
     // spans entire data field of account
@@ -315,7 +316,7 @@ impl Pack for DailyTokenClaimsDictionary {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct TokenAddedDictionary {
     // total size = 10240 bytes = 10Mb
     // spans entire data field of account
@@ -376,7 +377,7 @@ impl Pack for TokenAddedDictionary {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Default)]
 pub struct TokenData {
     pub token_address: Pubkey,
     pub exists: bool,
