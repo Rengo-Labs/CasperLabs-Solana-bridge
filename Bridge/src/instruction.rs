@@ -42,7 +42,7 @@ pub enum BridgeInstruction {
     /// Accounts expected
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[signer]` The account used as global storage of bridge
-    /// 3. `[signer - writable]` The account used as 'token_list' dictionary
+    /// 2. `[signer - writable]` The account used as 'token_list' dictionary
     UpdateTokenLimitOnlyOwner {
         token_index: u64,
         limit: u64,
@@ -50,7 +50,7 @@ pub enum BridgeInstruction {
     /// Accounts expected
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[signer]` The account used as global storage of bridge
-    /// 3. `[signer - writable]` The account used as 'token_list' dictionary
+    /// 2. `[signer - writable]` The account used as 'token_list' dictionary
     SetTokenLimitTimeOnlyOwner {
         token_index: u64,
         timestamp: u64,
@@ -64,7 +64,7 @@ pub enum BridgeInstruction {
     /// Accounts expected
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[signer]` The account used as global storage of bridge
-    /// 3. `[signer - writable]` The account used as 'token_list' dictionary
+    /// 2. `[signer - writable]` The account used as 'token_list' dictionary
     UpdateTokenFeeOnlyOwner {
         index: u64,
         new_token_fee: u64,
@@ -81,20 +81,34 @@ pub enum BridgeInstruction {
     /// Accounts expected
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[signer]` The account used as global storage of bridge
-    /// 3. `[writable]` The account used as 'token_list' dictionary
-    /// 3. `[writable]` The account used as 'token_list' dictionary
+    /// 2. `[writable]` The account used as 'token_list' dictionary
+    /// 3. `[writable]` The account used as 'token_added' dictionary
     AddTokenOnlyOwner {
         index: u64,
         token_address: Pubkey,
         fee: u64,
         limit: u64,
     },
+    /// Accounts expected
+    /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
+    /// 1. `[signer]` The account used as global storage of bridge
+    /// 2. `[writable]` The account used as 'token_list' dictionary
     PauseTokenOnlyOwner {
         token_index: u64,
     },
+    /// Accounts expected
+    /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
+    /// 1. `[signer]` The account used as global storage of bridge
+    /// 2. `[writable]` The account used as 'token_list' dictionary
+    /// 3. `[writable]` The account used as 'daily_token_claims' dictionary
+    ///
     UnpauseTokenOnlyOwner {
         token_index: u64,
     },
+    /// Accounts expected
+    /// 0. `[]` The account used as global storage of bridge
+    /// 1. `[]` The account used as 'token_list' dictionary
+    /// 2. `[]` The account used as 'calculate_fee_result' account
     CalculateFee {
         token_index: u64,
         amount: u64,

@@ -2,8 +2,8 @@
 use crate::error::BridgeError;
 use crate::instruction::BridgeInstruction;
 use crate::state::{
-    Bridge, ClaimedDictionary, DailyTokenClaimsDictionary, TokenAddedDictionary, TokenData,
-    TokenListDictionary,
+    Bridge, CalcuateFeeResult, ClaimedDictionary, DailyTokenClaimsDictionary, TokenAddedDictionary,
+    TokenData, TokenListDictionary,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::program_pack::Pack;
@@ -17,6 +17,8 @@ use solana_program::{
 };
 
 use std::collections::BTreeMap;
+
+pub const TEN_POW_18: u64 = 1000000000000000000;
 
 pub struct Processor {}
 impl Processor {
@@ -87,12 +89,16 @@ impl Processor {
                 fee,
                 limit,
             } => add_token(program_id, accounts, index, token_address, fee, limit),
-            BridgeInstruction::PauseTokenOnlyOwner { token_index } => Ok(()),
-            BridgeInstruction::UnpauseTokenOnlyOwner { token_index } => Ok(()),
+            BridgeInstruction::PauseTokenOnlyOwner { token_index } => {
+                pause_token(program_id, accounts, token_index)
+            }
+            BridgeInstruction::UnpauseTokenOnlyOwner { token_index } => {
+                unpause_token(program_id, accounts, token_index)
+            }
             BridgeInstruction::CalculateFee {
                 token_index,
                 amount,
-            } => Ok(()),
+            } => calculate_fee(program_id, accounts, token_index, amount),
             BridgeInstruction::Verify {
                 token_index,
                 from,
@@ -102,7 +108,6 @@ impl Processor {
                 index,
                 signature,
             } => Ok(()),
-            _ => Err(ProgramError::InvalidInstructionData),
         }
     }
 }
@@ -498,6 +503,199 @@ fn add_token(
     }
     Ok(())
 }
+
+fn pause_token(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _token_index: u64,
+) -> ProgramResult {
+    verify_transaction_signatures(&_accounts[..2])?;
+    verify_program_accounts_ownership(&_program_id, _accounts[1..].as_ref())?;
+
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
+
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+
+    verify_program_accounts_initialization(
+        Some(&bridge_data),
+        None,
+        None,
+        Some(&token_list_data),
+        None,
+        true,
+    )?;
+    only_owner(&owner_account, &bridge_data)?;
+
+    if token_list_data
+        .token_list_dictionary
+        .contains_key(&_token_index)
+        == false
+    {
+        return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
+    }
+
+    let mut token_data: TokenData = TokenData::try_from_slice(
+        &token_list_data
+            .token_list_dictionary
+            .get(&_token_index)
+            .unwrap(),
+    )
+    .unwrap();
+
+    if token_data.paused == true {
+        return Err(ProgramError::Custom(BridgeError::TokenAlreadyPaused as u32));
+    }
+
+    token_data.paused = true;
+
+    let _ = token_list_data
+        .token_list_dictionary
+        .insert(_token_index, token_data.try_to_vec().unwrap());
+
+    token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+
+    Ok(())
+}
+
+fn unpause_token(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _token_index: u64,
+) -> ProgramResult {
+    verify_transaction_signatures(&_accounts[..2])?;
+    verify_program_accounts_ownership(&_program_id, _accounts[1..].as_ref())?;
+
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
+
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+
+    verify_program_accounts_initialization(
+        Some(&bridge_data),
+        None,
+        None,
+        Some(&token_list_data),
+        None,
+        true,
+    )?;
+    only_owner(&owner_account, &bridge_data)?;
+
+    if token_list_data
+        .token_list_dictionary
+        .contains_key(&_token_index)
+        == false
+    {
+        return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
+    }
+
+    let mut token_data: TokenData = TokenData::try_from_slice(
+        &token_list_data
+            .token_list_dictionary
+            .get(&_token_index)
+            .unwrap(),
+    )
+    .unwrap();
+
+    if token_data.paused == false {
+        return Err(ProgramError::Custom(
+            BridgeError::TokenAlreadyUnaused as u32,
+        ));
+    }
+
+    token_data.paused = false;
+
+    let _ = token_list_data
+        .token_list_dictionary
+        .insert(_token_index, token_data.try_to_vec().unwrap());
+
+    token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+
+    Ok(())
+}
+
+fn _update_daily_limit(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _token_index: u64,
+) -> ProgramResult {
+    verify_transaction_signatures(&_accounts[..2])?;
+    verify_program_accounts_ownership(&_program_id, _accounts[1..].as_ref())?;
+
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
+    let daily_token_claims_account = next_account_info(account_info_iter)?;
+
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+    let mut daily_token_claims_data =
+        DailyTokenClaimsDictionary::unpack_from_slice(&daily_token_claims_account.data.borrow())?;
+
+    verify_program_accounts_initialization(
+        Some(&bridge_data),
+        None,
+        None,
+        Some(&token_list_data),
+        None,
+        true,
+    )?;
+    only_owner(&owner_account, &bridge_data)?;
+
+    if token_list_data
+        .token_list_dictionary
+        .contains_key(&_token_index)
+        == false
+    {
+        return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
+    }
+
+    let mut token_data: TokenData = TokenData::try_from_slice(
+        &token_list_data
+            .token_list_dictionary
+            .get(&_token_index)
+            .unwrap(),
+    )
+    .unwrap();
+
+    let clock = Clock::get()?;
+    let current_timestamp = clock.unix_timestamp;
+
+    if current_timestamp as u64 <= token_data.limit_timestamp {
+        return Ok(());
+    }
+    // bridge_data.stable_fee_update_time
+    let sum_result = SECONDS_PER_DAY.checked_add(current_timestamp as u64);
+
+    match sum_result {
+        None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
+        Some(limit_timestamp) => {
+            token_data.limit_timestamp = limit_timestamp;
+            let _ = token_list_data
+                .token_list_dictionary
+                .insert(_token_index, token_data.try_to_vec().unwrap());
+
+            let _ = daily_token_claims_data
+                .daily_token_claims_dictionary
+                .insert(_token_index, 0);
+
+            token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+            daily_token_claims_data
+                .pack_into_slice(&mut &mut daily_token_claims_account.data.borrow_mut()[..]);
+        }
+    }
+    Ok(())
+}
 fn _update_token_fee(
     _program_id: &Pubkey,
     _accounts: &[AccountInfo],
@@ -564,6 +762,90 @@ fn _update_stable_fee(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> Progra
     Ok(())
 }
 
+fn calculate_fee(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _token_index: u64,
+    _amount: u64,
+) -> ProgramResult {
+    verify_program_accounts_ownership(&_program_id, _accounts)?;
+
+    let account_info_iter = &mut _accounts.iter();
+    let bridge_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
+    let calculate_fee_result_account = next_account_info(account_info_iter)?;
+
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+    let mut calculate_fee_result_data =
+        CalcuateFeeResult::unpack_from_slice(&calculate_fee_result_account.data.borrow())?;
+
+    verify_program_accounts_initialization(
+        Some(&bridge_data),
+        None,
+        None,
+        Some(&token_list_data),
+        None,
+        true,
+    )?;
+
+    if token_list_data
+        .token_list_dictionary
+        .contains_key(&_token_index)
+        == false
+    {
+        return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
+    }
+
+    let token_data: TokenData = TokenData::try_from_slice(
+        &token_list_data
+            .token_list_dictionary
+            .get(&_token_index)
+            .unwrap(),
+    )
+    .unwrap();
+
+    if token_data.fee != 0 {
+        if token_data.fee >= TEN_POW_18 {
+            calculate_fee_result_data.fee = 0;
+            calculate_fee_result_data
+                .pack_into_slice(&mut &mut calculate_fee_result_account.data.borrow_mut()[..]);
+
+            return Ok(());
+        }
+        return match _amount.checked_mul(token_data.fee) {
+            None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
+            Some(product) => {
+                let quotient: u64 = product / TEN_POW_18;
+                calculate_fee_result_data.fee = quotient;
+                calculate_fee_result_data
+                    .pack_into_slice(&mut &mut calculate_fee_result_account.data.borrow_mut()[..]);
+
+                Ok(())
+            }
+        };
+    }
+
+    if bridge_data.stable_fee >= TEN_POW_18 {
+        calculate_fee_result_data.fee = 0;
+        calculate_fee_result_data
+            .pack_into_slice(&mut &mut calculate_fee_result_account.data.borrow_mut()[..]);
+
+        return Ok(());
+    }
+
+    let result: u64 = match _amount.checked_mul(bridge_data.stable_fee) {
+        None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
+        Some(product) => product / TEN_POW_18,
+    };
+
+    calculate_fee_result_data.fee = result;
+    calculate_fee_result_data
+        .pack_into_slice(&mut &mut calculate_fee_result_account.data.borrow_mut()[..]);
+
+    Ok(())
+}
 // ========================== Helper Functions ==================== //
 
 // verifies that all given accounts signed the transaciton

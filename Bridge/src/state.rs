@@ -377,6 +377,30 @@ impl Pack for TokenAddedDictionary {
     }
 }
 
+#[derive(Default, Debug, Clone)]
+pub struct CalcuateFeeResult {
+    pub fee: u64,
+}
+impl Sealed for CalcuateFeeResult {}
+impl Pack for CalcuateFeeResult {
+    const LEN: usize = 8;
+
+    // for deserialization
+    fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
+        let src: &[u8; 8] = array_ref![src, 0, CalcuateFeeResult::LEN];
+        let fee: u64 = u64::from_le_bytes(*src);
+        Ok(Self { fee })
+    }
+
+    // for serialization
+    fn pack_into_slice(&self, dst: &mut [u8]) {
+        let fee_dst: &mut [u8; 8] = array_mut_ref![dst, 0, CalcuateFeeResult::LEN];
+
+        let CalcuateFeeResult { fee } = self;
+
+        *fee_dst = fee.to_le_bytes();
+    }
+}
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Default)]
 pub struct TokenData {
     pub token_address: Pubkey,

@@ -2,7 +2,7 @@ use borsh::BorshDeserialize;
 use bridge::{
     entrypoint,
     instruction::BridgeInstruction,
-    state::{Bridge, TokenAddedDictionary, TokenData, TokenListDictionary},
+    state::{Bridge, CalcuateFeeResult, TokenAddedDictionary, TokenData, TokenListDictionary},
 };
 use solana_program_test::*;
 use solana_sdk::{
@@ -19,6 +19,7 @@ use solana_sdk::{
 use std::mem;
 
 pub const LIB_NAME: &str = "bridge";
+pub const TEN_POW_18: u64 = 1000000000000000000;
 
 fn program_test(_program_id: Pubkey) -> ProgramTest {
     ProgramTest::new(
@@ -26,6 +27,39 @@ fn program_test(_program_id: Pubkey) -> ProgramTest {
         _program_id,
         processor!(entrypoint::process_instruction),
     )
+}
+
+async fn send_instruction(
+    _program_id: &Pubkey,
+    _accounts: &[(&Keypair, bool)],
+    _instruction_args: &BridgeInstruction,
+    _recent_blockhash: Hash,
+    _banks_client: &mut BanksClient,
+) {
+    let mut _account_metas: Vec<AccountMeta> = Vec::new();
+    let mut _signers: Vec<&Keypair> = Vec::new();
+
+    _signers.push(_accounts[0].0);
+    for item in _accounts[1..].iter() {
+        _account_metas.push(AccountMeta::new(item.0.pubkey(), item.1));
+        if item.1 == true {
+            _signers.push(item.0);
+        }
+    }
+
+    let mut transaction = Transaction::new_with_payer(
+        &[Instruction::new_with_borsh(
+            *_program_id,
+            &_instruction_args,
+            _account_metas,
+        )],
+        Some(&_accounts[0].0.pubkey()),
+    );
+    transaction.sign(&_signers, _recent_blockhash);
+    _banks_client
+        .process_transaction(transaction)
+        .await
+        .unwrap();
 }
 
 fn setup_program_test() -> (
@@ -111,7 +145,7 @@ async fn test_setup_program_test() {
         bridge_account_key,
         _claimed_account_key,
         _dtc_account_key,
-       _token_added_account_key,
+        _token_added_account_key,
         _token_list_account_key,
         program_test,
     ) = setup_program_test();
@@ -124,39 +158,6 @@ async fn test_setup_program_test() {
         .expect("bridge_account not found.");
 
     assert_eq!(bridge_account.owner, program_id);
-}
-
-async fn send_instruction(
-    _program_id: &Pubkey,
-    _accounts: &[(&Keypair, bool)],
-    _instruction_args: &BridgeInstruction,
-    _recent_blockhash: Hash,
-    _banks_client: &mut BanksClient,
-) {
-    let mut _account_metas: Vec<AccountMeta> = Vec::new();
-    let mut _signers: Vec<&Keypair> = Vec::new();
-
-    _signers.push(_accounts[0].0);
-    for item in _accounts[1..].iter() {
-        _account_metas.push(AccountMeta::new(item.0.pubkey(), item.1));
-        if item.1 == true {
-            _signers.push(item.0);
-        }
-    }
-
-    let mut transaction = Transaction::new_with_payer(
-        &[Instruction::new_with_borsh(
-            *_program_id,
-            &_instruction_args,
-            _account_metas,
-        )],
-        Some(&_accounts[0].0.pubkey()),
-    );
-    transaction.sign(&_signers, _recent_blockhash);
-    _banks_client
-        .process_transaction(transaction)
-        .await
-        .unwrap();
 }
 
 #[tokio::test]
@@ -251,8 +252,7 @@ async fn test_instruction_construct() {
         .await
         .expect("get_account")
         .expect("token_list_account not found.");
-    let token_list_data =
-        TokenListDictionary::unpack_from_slice(&token_list_account.data).unwrap();
+    let token_list_data = TokenListDictionary::unpack_from_slice(&token_list_account.data).unwrap();
     let ret: &Vec<u8> = token_list_data.token_list_dictionary.get(&1).unwrap();
     let ret: TokenData = TokenData::try_from_slice(ret).unwrap();
     assert_ne!(ret.limit_timestamp, 0);
@@ -302,13 +302,6 @@ async fn test_instruction_update_verify_address() {
         &mut banks_client,
     )
     .await;
-
-    let bridge_account: Account = banks_client
-        .get_account(bridge_account_key.pubkey())
-        .await
-        .expect("get_account")
-        .expect("bridge_account not found.");
-    // let bridge_data = Bridge::unpack_from_slice(&bridge_account.data).unwrap();
 
     let _verify_address: Pubkey = Pubkey::new_unique();
     // run test instruction
@@ -406,8 +399,7 @@ async fn test_instruction_update_token_limit() {
         .await
         .expect("get_account")
         .expect("token_list_account not found.");
-    let token_list_data =
-        TokenListDictionary::unpack_from_slice(&token_list_account.data).unwrap();
+    let token_list_data = TokenListDictionary::unpack_from_slice(&token_list_account.data).unwrap();
 
     let ret: &Vec<u8> = token_list_data
         .token_list_dictionary
@@ -489,8 +481,7 @@ async fn test_instruction_set_token_limit_time() {
         .await
         .expect("get_account")
         .expect("token_list_account not found.");
-    let token_list_data =
-        TokenListDictionary::unpack_from_slice(&token_list_account.data).unwrap();
+    let token_list_data = TokenListDictionary::unpack_from_slice(&token_list_account.data).unwrap();
 
     let ret: &Vec<u8> = token_list_data
         .token_list_dictionary
@@ -769,13 +760,6 @@ async fn test_instruction_update_fees() {
     );
     banks_client.process_transaction(transaction).await.unwrap();
 
-    let bridge_account: Account = banks_client
-        .get_account(bridge_account_key.pubkey())
-        .await
-        .expect("get_account")
-        .expect("bridge_account not found.");
-    // let bridge_data = Bridge::unpack_from_slice(&bridge_account.data).unwrap();
-
     let token_list_data: TokenListDictionary = banks_client
         .get_packed_account_data(token_list_account_key.pubkey())
         .await
@@ -916,4 +900,375 @@ async fn test_instruction_add_token() {
     assert_eq!(addition, true);
     assert_eq!(token_data.fee, fee);
     assert_eq!(token_data.limit, limit);
+}
+
+#[tokio::test]
+async fn test_instruction_pause_token() {
+    let w_pokt_address = Pubkey::new_unique();
+    let verify_address = Pubkey::new_unique();
+    let chain_id: u64 = 90;
+    let stable_fee: u64 = 180;
+
+    let (
+        program_id,
+        _system_program_id,
+        owner_account_key,
+        bridge_account_key,
+        claimed_account_key,
+        dtc_account_key,
+        token_added_account_key,
+        token_list_account_key,
+        program_test,
+    ) = setup_program_test();
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+    // construct bridge
+    let instruction_args = BridgeInstruction::Construct {
+        w_pokt_address: w_pokt_address,
+        verify_address: verify_address,
+        chain_id: chain_id,
+        stable_fee: stable_fee,
+    };
+    send_instruction(
+        &program_id,
+        &[
+            (&payer, true),
+            (&owner_account_key, true),
+            (&bridge_account_key, true),
+            (&claimed_account_key, true),
+            (&dtc_account_key, true),
+            (&token_added_account_key, true),
+            (&token_list_account_key, true),
+        ],
+        &instruction_args,
+        recent_blockhash,
+        &mut banks_client,
+    )
+    .await;
+
+    let index: u64 = 10;
+    let token_address: Pubkey = Pubkey::new_unique();
+    let fee: u64 = 11;
+    let limit: u64 = 12;
+
+    // add token - paused initially
+    let instruction_args = BridgeInstruction::AddTokenOnlyOwner {
+        index,
+        token_address,
+        fee,
+        limit,
+    };
+    send_instruction(
+        &program_id,
+        &[
+            (&payer, true),
+            (&owner_account_key, true),
+            (&bridge_account_key, true),
+            (&token_list_account_key, true),
+            (&token_added_account_key, true),
+        ],
+        &instruction_args,
+        recent_blockhash,
+        &mut banks_client,
+    )
+    .await;
+
+    // now pause token
+    let instruction_args = BridgeInstruction::PauseTokenOnlyOwner { token_index: index };
+    // pause token
+    send_instruction(
+        &program_id,
+        &[
+            (&payer, true),
+            (&owner_account_key, true),
+            (&bridge_account_key, true),
+            (&token_list_account_key, false),
+        ],
+        &instruction_args,
+        recent_blockhash,
+        &mut banks_client,
+    )
+    .await;
+
+    let token_list_data: TokenListDictionary = banks_client
+        .get_packed_account_data(token_list_account_key.pubkey())
+        .await
+        .expect("token_list_data query error.");
+
+    let token_added_data: TokenAddedDictionary = banks_client
+        .get_packed_account_data(token_added_account_key.pubkey())
+        .await
+        .expect("token_added_data query error.");
+
+    let token_data: TokenData =
+        TokenData::try_from_slice(token_list_data.token_list_dictionary.get(&index).unwrap())
+            .unwrap();
+
+    let addition: bool = *token_added_data
+        .token_added_dictionary
+        .get(&token_address)
+        .unwrap();
+
+    assert_eq!(addition, true);
+    assert_eq!(token_data.paused, true);
+}
+
+#[tokio::test]
+async fn test_instruction_unpause_token() {
+    let w_pokt_address = Pubkey::new_unique();
+    let verify_address = Pubkey::new_unique();
+    let chain_id: u64 = 90;
+    let stable_fee: u64 = 180;
+
+    let (
+        program_id,
+        _system_program_id,
+        owner_account_key,
+        bridge_account_key,
+        claimed_account_key,
+        dtc_account_key,
+        token_added_account_key,
+        token_list_account_key,
+        program_test,
+    ) = setup_program_test();
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+    // construct bridge
+    let instruction_args = BridgeInstruction::Construct {
+        w_pokt_address: w_pokt_address,
+        verify_address: verify_address,
+        chain_id: chain_id,
+        stable_fee: stable_fee,
+    };
+    send_instruction(
+        &program_id,
+        &[
+            (&payer, true),
+            (&owner_account_key, true),
+            (&bridge_account_key, true),
+            (&claimed_account_key, true),
+            (&dtc_account_key, true),
+            (&token_added_account_key, true),
+            (&token_list_account_key, true),
+        ],
+        &instruction_args,
+        recent_blockhash,
+        &mut banks_client,
+    )
+    .await;
+
+    let index: u64 = 10;
+    let token_address: Pubkey = Pubkey::new_unique();
+    let fee: u64 = 11;
+    let limit: u64 = 12;
+
+    // add token - paused initially
+    let instruction_args = BridgeInstruction::AddTokenOnlyOwner {
+        index,
+        token_address,
+        fee,
+        limit,
+    };
+    send_instruction(
+        &program_id,
+        &[
+            (&payer, true),
+            (&owner_account_key, true),
+            (&bridge_account_key, true),
+            (&token_list_account_key, true),
+            (&token_added_account_key, true),
+        ],
+        &instruction_args,
+        recent_blockhash,
+        &mut banks_client,
+    )
+    .await;
+
+    // now pause token
+    let instruction_args = BridgeInstruction::PauseTokenOnlyOwner { token_index: index };
+    // pause token
+    send_instruction(
+        &program_id,
+        &[
+            (&payer, true),
+            (&owner_account_key, true),
+            (&bridge_account_key, true),
+            (&token_list_account_key, false),
+        ],
+        &instruction_args,
+        recent_blockhash,
+        &mut banks_client,
+    )
+    .await;
+
+    let token_list_data: TokenListDictionary = banks_client
+        .get_packed_account_data(token_list_account_key.pubkey())
+        .await
+        .expect("token_list_data query error.");
+
+    let token_added_data: TokenAddedDictionary = banks_client
+        .get_packed_account_data(token_added_account_key.pubkey())
+        .await
+        .expect("token_added_data query error.");
+
+    let token_data: TokenData =
+        TokenData::try_from_slice(token_list_data.token_list_dictionary.get(&index).unwrap())
+            .unwrap();
+
+    let addition: bool = *token_added_data
+        .token_added_dictionary
+        .get(&token_address)
+        .unwrap();
+
+    assert_eq!(addition, true);
+    assert_eq!(token_data.paused, true);
+
+    // now unpause token
+    let instruction_args = BridgeInstruction::UnpauseTokenOnlyOwner { token_index: index };
+    // pause token
+    send_instruction(
+        &program_id,
+        &[
+            (&payer, true),
+            (&owner_account_key, true),
+            (&bridge_account_key, true),
+            (&token_list_account_key, false),
+        ],
+        &instruction_args,
+        recent_blockhash,
+        &mut banks_client,
+    )
+    .await;
+
+    let token_list_data: TokenListDictionary = banks_client
+        .get_packed_account_data(token_list_account_key.pubkey())
+        .await
+        .expect("token_list_data query error.");
+
+    let token_data: TokenData =
+        TokenData::try_from_slice(token_list_data.token_list_dictionary.get(&index).unwrap())
+            .unwrap();
+
+    assert_eq!(token_data.paused, false);
+}
+
+#[tokio::test]
+async fn test_instruction_calculate_fee() {
+    let w_pokt_address = Pubkey::new_unique();
+    let verify_address = Pubkey::new_unique();
+    let chain_id: u64 = 90;
+    let stable_fee: u64 = 180;
+
+    let (
+        program_id,
+        _system_program_id,
+        owner_account_key,
+        bridge_account_key,
+        claimed_account_key,
+        dtc_account_key,
+        token_added_account_key,
+        token_list_account_key,
+        mut program_test,
+    ) = setup_program_test();
+
+    // account for return value of calculate_fee instruction
+    let calculate_fee_result_account_key = Keypair::new();
+    program_test.add_account(
+        calculate_fee_result_account_key.pubkey(),
+        Account {
+            lamports: 5,
+            data: vec![0_u8; mem::size_of::<u64>()],
+            owner: program_id,
+            ..Account::default()
+        },
+    );
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    // Construct bridge first
+    let instruction_args = BridgeInstruction::Construct {
+        w_pokt_address: w_pokt_address,
+        verify_address: verify_address,
+        chain_id: chain_id,
+        stable_fee: stable_fee,
+    };
+    send_instruction(
+        &program_id,
+        &[
+            (&payer, true),
+            (&owner_account_key, true),
+            (&bridge_account_key, true),
+            (&claimed_account_key, true),
+            (&dtc_account_key, true),
+            (&token_added_account_key, true),
+            (&token_list_account_key, true),
+        ],
+        &instruction_args,
+        recent_blockhash,
+        &mut banks_client,
+    )
+    .await;
+
+    let index: u64 = 10;
+    let token_address: Pubkey = Pubkey::new_unique();
+    let fee: u64 = 11;
+    let limit: u64 = 12;
+    // add token
+    let instruction_args = BridgeInstruction::AddTokenOnlyOwner {
+        index,
+        token_address,
+        fee,
+        limit,
+    };
+
+    send_instruction(
+        &program_id,
+        &[
+            (&payer, true),
+            (&owner_account_key, true),
+            (&bridge_account_key, true),
+            (&token_list_account_key, true),
+            (&token_added_account_key, true),
+        ],
+        &instruction_args,
+        recent_blockhash,
+        &mut banks_client,
+    )
+    .await;
+
+    // calculate fee
+    let amount: u64 = 10;
+    let instruction_args = BridgeInstruction::CalculateFee {
+        token_index: index,
+        amount,
+    };
+    send_instruction(
+        &program_id,
+        &[
+            (&payer, true),
+            (&bridge_account_key, false),
+            (&token_list_account_key, false),
+            (&calculate_fee_result_account_key, false),
+        ],
+        &instruction_args,
+        recent_blockhash,
+        &mut banks_client,
+    )
+    .await;
+
+    let token_list_data: TokenListDictionary = banks_client
+        .get_packed_account_data(token_list_account_key.pubkey())
+        .await
+        .expect("token_list_data query error.");
+
+    let token_data: TokenData =
+        TokenData::try_from_slice(token_list_data.token_list_dictionary.get(&index).unwrap())
+            .unwrap();
+
+    let calculate_fee_result_data: CalcuateFeeResult = banks_client
+        .get_packed_account_data(calculate_fee_result_account_key.pubkey())
+        .await
+        .expect("calculate_fee_result_data query error");
+
+    let expected_fee: u64 = (amount * token_data.fee) / TEN_POW_18;
+
+    assert_eq!(calculate_fee_result_data.fee, expected_fee);
 }

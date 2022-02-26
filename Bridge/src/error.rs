@@ -14,6 +14,10 @@ pub enum BridgeError {
     MapKeyNotFound,
     #[error("Token already added.")]
     TokenAlreadyAdded,
+    #[error("Token already paused.")]
+    TokenAlreadyPaused,
+    #[error("Token already unpaused.")]
+    TokenAlreadyUnaused,
 }
 
 impl From<BridgeError> for ProgramError {
