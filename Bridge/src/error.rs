@@ -18,6 +18,8 @@ pub enum BridgeError {
     TokenAlreadyPaused,
     #[error("Token already unpaused.")]
     TokenAlreadyUnaused,
+    #[error("Cannot request to same chain.")]
+    RequestToSameChain,
 }
 
 impl From<BridgeError> for ProgramError {
