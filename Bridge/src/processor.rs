@@ -11,11 +11,12 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::{Clock, SECONDS_PER_DAY},
     entrypoint::ProgramResult,
+    program,
     program_error::ProgramError,
     pubkey::Pubkey,
     sysvar::Sysvar,
 };
-
+use spl_token;
 use std::collections::BTreeMap;
 
 pub const TEN_POW_18: u64 = 1000000000000000000;
@@ -49,7 +50,7 @@ impl Processor {
                 to,
                 amount,
                 chain_id,
-            } => Ok(()),
+            } => transfer_request(program_id, accounts, token_index, to, amount, chain_id),
             BridgeInstruction::TransferReceipt {
                 token_index,
                 from,
@@ -205,6 +206,129 @@ fn construct(
     token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
     bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
 
+    Ok(())
+}
+
+fn transfer_request(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _token_index: u64,
+    _to: Pubkey,
+    _amount: u64,
+    _chain_id: u64,
+) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let bridge_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
+    let mint_account = next_account_info(account_info_iter)?;
+    let source_account = next_account_info(account_info_iter)?;
+    let token_program = next_account_info(account_info_iter)?;
+    let calculate_fee_result_account = next_account_info(account_info_iter)?;
+    let bridge_token_account = next_account_info(account_info_iter)?;
+    let source_account_owner_account = next_account_info(account_info_iter)?;
+
+    if !source_account_owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+
+    verify_program_accounts_initialization(
+        Some(&bridge_data),
+        None,
+        None,
+        Some(&token_list_data),
+        None,
+        true,
+    )?;
+
+    if token_list_data
+        .token_list_dictionary
+        .contains_key(&_token_index)
+        == false
+    {
+        return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
+    }
+
+    let mut token_data: TokenData = TokenData::try_from_slice(
+        &token_list_data
+            .token_list_dictionary
+            .get(&_token_index)
+            .unwrap(),
+    )
+    .unwrap();
+    if token_data.token_address != *mint_account.key {
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    if token_data.paused {
+        return Err(ProgramError::Custom(BridgeError::TokenAlreadyPaused as u32));
+    }
+    if _chain_id == bridge_data.chain_id {
+        return Err(ProgramError::Custom(BridgeError::RequestToSameChain as u32));
+    }
+
+    update_fees(
+        _program_id,
+        &[bridge_account.clone(), token_list_account.clone()],
+        _token_index,
+    )?;
+
+    // get the fee calculated
+    calculate_fee(
+        _program_id,
+        &[
+            bridge_account.clone(),
+            token_list_account.clone(),
+            calculate_fee_result_account.clone(),
+        ],
+        _token_index,
+        _amount,
+    )?;
+
+    let calculate_fee_result_data =
+        CalcuateFeeResult::unpack_from_slice(&calculate_fee_result_account.data.borrow())?;
+    let fee = calculate_fee_result_data.fee;
+
+    // tokenData.totalFeesCollected = tokenData.totalFeesCollected.add(_fee);
+    token_data.total_fees_collected = token_data
+        .total_fees_collected
+        .checked_add(fee)
+        .ok_or(ProgramError::Custom(BridgeError::Overflow as u32))
+        .unwrap();
+
+    let _ = token_list_data
+        .token_list_dictionary
+        .insert(_token_index, token_data.try_to_vec().unwrap());
+
+    // CPI to transfer tokens from transaction sender to bridge program token account
+    let mint_data = spl_token::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
+    let transfer_from_ix = spl_token::instruction::transfer_checked(
+        token_program.key,
+        source_account.key,
+        mint_account.key,
+        bridge_token_account.key,
+        source_account_owner_account.key,
+        &[&source_account_owner_account.key],
+        _amount,
+        mint_data.decimals,
+    )?;
+
+    program::invoke(
+        &transfer_from_ix,
+        &[
+            source_account.clone(),
+            mint_account.clone(),
+            bridge_token_account.clone(),
+            source_account_owner_account.clone(),
+        ],
+    )?;
+    bridge_data.current_index += 1;
+
+    token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+    bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -696,6 +820,9 @@ fn _update_daily_limit(
     }
     Ok(())
 }
+
+/// Accounts expected
+/// 1. `[writable]` the TokenList account
 fn _update_token_fee(
     _program_id: &Pubkey,
     _accounts: &[AccountInfo],
@@ -740,6 +867,8 @@ fn _update_token_fee(
     Ok(())
 }
 
+/// Accounts Expected
+/// 0. `[writable]` the Bridge account
 fn _update_stable_fee(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
     let bridge_account: &AccountInfo = &_accounts[0];
     let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;

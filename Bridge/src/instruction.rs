@@ -18,6 +18,16 @@ pub enum BridgeInstruction {
         chain_id: u64,
         stable_fee: u64,
     },
+    /// Accounts expected
+    /// 0. `[]` The account of person initializing bridge - the 'owner'.
+    /// 1. `[writeable]` The account used as global storage of Bridge program
+    /// 2. `[writeable]` The account used as 'token_list' dictionary
+    /// 3. `[]` the token mint account found at 'token_index' in token_list dictionary
+    /// 4. `[writable]` the token account of token sender
+    /// 5. `[]` the Token program
+    /// 6. `[]` the CalculateFeeResult account
+    /// 7. `[writable]` the Token account of Bridge
+    /// 8. `[signer]` the sender token account's owner
     TransferRequest {
         token_index: u64,
         to: Pubkey,
