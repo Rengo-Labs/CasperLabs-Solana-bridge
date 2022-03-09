@@ -28,7 +28,7 @@ impl Processor {
                 set_bridge(program_id, accounts, bridge_address)
             }
             WPoktInstruction::MintOnlyBridge { amount } => mint(program_id, accounts, amount),
-            WPoktInstruction::Burn { amount } => Ok(()),
+            WPoktInstruction::Burn { amount } => burn(program_id, accounts, amount),
         }
     }
 }
@@ -57,8 +57,8 @@ fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult
     let init_mint_ix = spl_token::instruction::initialize_mint(
         &spl_token::id(),
         _mint_account,
-        &owner.key,
-        Some(&owner.key),
+        _program_id,
+        Some(_program_id),
         9,
     )?;
 
@@ -131,14 +131,15 @@ fn mint(_program_id: &Pubkey, _accounts: &[AccountInfo], _amount: u64) -> Progra
     let mint_account = next_account_info(account_info_iter)?;
     let token_program_account = next_account_info(account_info_iter)?;
     let receiver_account = next_account_info(account_info_iter)?;
+    let receiver_token_account = next_account_info(account_info_iter)?;
 
     // mint instruction
     let mint_ix = spl_token::instruction::mint_to(
         token_program_account.key,
         mint_account.key,
+        receiver_token_account.key,
         receiver_account.key,
-        _program_id,
-        &[owner_account.key],
+        &[_program_id],
         _amount,
     )?;
 
@@ -147,8 +148,36 @@ fn mint(_program_id: &Pubkey, _accounts: &[AccountInfo], _amount: u64) -> Progra
         &mint_ix,
         &[
             mint_account.clone(),
+            receiver_token_account.clone(),
             receiver_account.clone(),
-            owner_account.clone(),
+        ],
+    )?;
+    Ok(())
+}
+
+fn burn(_program_id: &Pubkey, _accounts: &[AccountInfo], _amount: u64) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let target_token_account = next_account_info(account_info_iter)?;
+    let target_token_account_owner_account = next_account_info(account_info_iter)?;
+    let mint_account = next_account_info(account_info_iter)?;
+    let mint_authority_account = next_account_info(account_info_iter)?;
+    let token_program = next_account_info(account_info_iter)?;
+
+    let burn_ix = spl_token::instruction::burn(
+        token_program.key,
+        target_token_account.key,
+        mint_account.key,
+        mint_authority_account.key,
+        &[target_token_account_owner_account.key],
+        _amount,
+    )?;
+
+    program::invoke(
+        &burn_ix,
+        &[
+            target_token_account.clone(),
+            mint_account.clone(),
+            target_token_account_owner_account.clone(),
         ],
     )?;
     Ok(())
