@@ -109,6 +109,10 @@ impl Processor {
                 index,
                 signature,
             } => Ok(()),
+            BridgeInstruction::RenounceOwnership => renounce_ownership(program_id, accounts),
+            BridgeInstruction::TransferOwnership { new_owner } => {
+                transfer_ownership(program_id, accounts, new_owner)
+            }
         }
     }
 }
@@ -975,6 +979,66 @@ fn calculate_fee(
 
     Ok(())
 }
+
+fn renounce_ownership(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let wpokt_account = next_account_info(account_info_iter)?;
+
+    if wpokt_account.owner != _program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let mut bridge_data = Bridge::unpack_from_slice(&wpokt_account.data.borrow())?;
+    if !bridge_data.is_initialized {
+        return Err(ProgramError::UninitializedAccount);
+    }
+
+    // only owner
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if bridge_data.owner != *owner_account.key {
+        return Err(ProgramError::IllegalOwner);
+    }
+
+    bridge_data.owner = Pubkey::new_from_array([0_u8; 32]);
+    bridge_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
+    Ok(())
+}
+
+fn transfer_ownership(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _new_owner: Pubkey,
+) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let wpokt_account = next_account_info(account_info_iter)?;
+
+    if wpokt_account.owner != _program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let mut bridge_data = Bridge::unpack_from_slice(&wpokt_account.data.borrow())?;
+    if !bridge_data.is_initialized {
+        return Err(ProgramError::UninitializedAccount);
+    }
+
+    // only owner
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if bridge_data.owner != *owner_account.key {
+        return Err(ProgramError::IllegalOwner);
+    }
+
+    if _new_owner == Pubkey::new_from_array([0_u8; 32]) {
+        return Err(ProgramError::InvalidArgument);
+    }
+    bridge_data.owner = _new_owner;
+    bridge_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
+    Ok(())
+}
+
 // ========================== Helper Functions ==================== //
 
 // verifies that all given accounts signed the transaciton

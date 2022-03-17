@@ -14,7 +14,7 @@ solana-program = "1.9.5"
 borsh = "0.9"
 thiserror = "1.0"
 arrayref = "0.3.6"
-spl-token = "3.3.0"
+spl-token = {version = "3.3.0" , features  = ["no-entrypoint"] }
 
 [dev-dependencies]
 solana-program-test = "1.9.5"

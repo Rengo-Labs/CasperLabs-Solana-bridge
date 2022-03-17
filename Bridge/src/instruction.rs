@@ -132,4 +132,11 @@ pub enum BridgeInstruction {
         index: u64,
         signature: Vec<u8>,
     },
+    RenounceOwnership,
+    /// Accounts expected:
+    /// 0. `[signer]` The program owner's account.
+    /// 1. `[writeable]` The account used as WPokt's global state
+    TransferOwnership {
+        new_owner: Pubkey,
+    },
 }

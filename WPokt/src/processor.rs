@@ -11,7 +11,8 @@ use solana_program::{
     pubkey::Pubkey,
     sysvar::{rent, Sysvar},
 };
-use spl_token;
+use spl_token_2022;
+use std::fmt::format;
 
 pub struct Processor {}
 impl Processor {
@@ -29,14 +30,19 @@ impl Processor {
             }
             WPoktInstruction::MintOnlyBridge { amount } => mint(program_id, accounts, amount),
             WPoktInstruction::Burn { amount } => burn(program_id, accounts, amount),
+            WPoktInstruction::RenounceOwnership => renounce_ownership(program_id, accounts),
+            WPoktInstruction::TransferOwnership { new_owner } => {
+                transfer_ownership(program_id, accounts, new_owner)
+            }
         }
     }
 }
 
 fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
-
+    let mint_account = next_account_info(account_info_iter)?;
     let owner = next_account_info(account_info_iter)?;
+
     if !owner.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -51,23 +57,18 @@ fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult
     wpokt_data.is_initialized = true;
     wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
 
+    let pda_seed = format!("{}WPokt", *wpokt_account.key);
+    let (pda, nonce) = Pubkey::find_program_address(&[pda_seed.as_bytes()], _program_id);
     // create init mint instruction
-    let mint_account = next_account_info(account_info_iter)?;
-    let _mint_account: &Pubkey = mint_account.key;
-    let init_mint_ix = spl_token::instruction::initialize_mint(
-        &spl_token::id(),
-        _mint_account,
-        _program_id,
-        Some(_program_id),
+
+    let init_mint_ix = spl_token_2022::instruction::initialize_mint2(
+        &spl_token_2022::id(),
+        mint_account.key,
+        &pda,
+        None,
         9,
     )?;
-
-    // init mint CPI
-    let rent_sysvar_account = next_account_info(account_info_iter)?;
-    program::invoke(
-        &init_mint_ix,
-        &[mint_account.clone(), rent_sysvar_account.clone()],
-    )?;
+    program::invoke(&init_mint_ix, &[mint_account.clone()])?;
     Ok(())
 }
 
@@ -99,7 +100,7 @@ fn set_bridge(
         return Err(ProgramError::IllegalOwner);
     }
 
-    if wpokt_data.bridge_address == Pubkey::new(&[0_u8; 32]) {
+    if wpokt_data.bridge_address != Pubkey::new(&[0_u8; 32]) {
         return Err(ProgramError::Custom(WPoktError::AlreadySet as u32));
     }
 
@@ -114,9 +115,7 @@ fn mint(_program_id: &Pubkey, _accounts: &[AccountInfo], _amount: u64) -> Progra
     let owner_account = next_account_info(account_info_iter)?;
     let wpokt_account = next_account_info(account_info_iter)?;
     if wpokt_account.owner != _program_id {
-        return Err(ProgramError::Custom(
-            WPoktError::AccountNotOwnedByWPokt as u32,
-        ));
+        return Err(ProgramError::IncorrectProgramId);
     }
     let wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
     if !wpokt_data.is_initialized {
@@ -129,56 +128,114 @@ fn mint(_program_id: &Pubkey, _accounts: &[AccountInfo], _amount: u64) -> Progra
     }
 
     let mint_account = next_account_info(account_info_iter)?;
-    let token_program_account = next_account_info(account_info_iter)?;
     let receiver_account = next_account_info(account_info_iter)?;
-    let receiver_token_account = next_account_info(account_info_iter)?;
+    let pda_account = next_account_info(account_info_iter)?;
 
-    // mint instruction
-    let mint_ix = spl_token::instruction::mint_to(
-        token_program_account.key,
+    let seeds = format!("{}WPokt", *wpokt_account.key);
+    let (pda, nonce) = Pubkey::find_program_address(&[seeds.as_bytes()], _program_id);
+    // // mint instruction
+    let mint_ix = spl_token_2022::instruction::mint_to(
+        &spl_token_2022::id(),
         mint_account.key,
-        receiver_token_account.key,
         receiver_account.key,
-        &[_program_id],
+        &pda,
+        &[&pda],
         _amount,
     )?;
 
-    // invoke instruction
-    program::invoke(
+    program::invoke_signed(
         &mint_ix,
         &[
             mint_account.clone(),
-            receiver_token_account.clone(),
             receiver_account.clone(),
+            pda_account.clone(),
         ],
+        &[&[seeds.as_bytes(), &[nonce]]],
     )?;
     Ok(())
 }
 
 fn burn(_program_id: &Pubkey, _accounts: &[AccountInfo], _amount: u64) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
-    let target_token_account = next_account_info(account_info_iter)?;
-    let target_token_account_owner_account = next_account_info(account_info_iter)?;
+    let source_account = next_account_info(account_info_iter)?;
+    let source_auth_account = next_account_info(account_info_iter)?;
     let mint_account = next_account_info(account_info_iter)?;
-    let mint_authority_account = next_account_info(account_info_iter)?;
-    let token_program = next_account_info(account_info_iter)?;
 
-    let burn_ix = spl_token::instruction::burn(
-        token_program.key,
-        target_token_account.key,
+    let burn_ix = spl_token_2022::instruction::burn(
+        &spl_token_2022::id(),
+        source_account.key,
         mint_account.key,
-        mint_authority_account.key,
-        &[target_token_account_owner_account.key],
+        source_auth_account.key,
+        &[&source_auth_account.key],
         _amount,
     )?;
 
     program::invoke(
         &burn_ix,
         &[
-            target_token_account.clone(),
+            source_account.clone(),
             mint_account.clone(),
-            target_token_account_owner_account.clone(),
+            source_auth_account.clone(),
         ],
     )?;
+    Ok(())
+}
+
+fn renounce_ownership(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let wpokt_account = next_account_info(account_info_iter)?;
+
+    if wpokt_account.owner != _program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let mut wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
+    if !wpokt_data.is_initialized {
+        return Err(ProgramError::UninitializedAccount);
+    }
+
+    // only owner
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if wpokt_data.owner != *owner_account.key {
+        return Err(ProgramError::IllegalOwner);
+    }
+
+    wpokt_data.owner = Pubkey::new_from_array([0_u8; 32]);
+    wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
+    Ok(())
+}
+
+fn transfer_ownership(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _new_owner: Pubkey,
+) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let wpokt_account = next_account_info(account_info_iter)?;
+
+    if wpokt_account.owner != _program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let mut wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
+    if !wpokt_data.is_initialized {
+        return Err(ProgramError::UninitializedAccount);
+    }
+
+    // only owner
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if wpokt_data.owner != *owner_account.key {
+        return Err(ProgramError::IllegalOwner);
+    }
+
+    if _new_owner == Pubkey::new_from_array([0_u8; 32]) {
+        return Err(ProgramError::InvalidArgument);
+    }
+    wpokt_data.owner = _new_owner;
+    wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
     Ok(())
 }
