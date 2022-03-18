@@ -15,8 +15,9 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
     sysvar::Sysvar,
+    ed25519_program,
 };
-use spl_token;
+use spl_token_2022;
 use std::collections::BTreeMap;
 
 pub const TEN_POW_18: u64 = 1000000000000000000;
@@ -83,7 +84,9 @@ impl Processor {
             BridgeInstruction::UpdateFees { token_index } => {
                 update_fees(program_id, accounts, token_index)
             }
-            BridgeInstruction::WithdrawFeesOnlyOwner { index } => Ok(()),
+            BridgeInstruction::WithdrawFeesOnlyOwner { index } => {
+                withdraw_fees(program_id, accounts, index)
+            }
             BridgeInstruction::AddTokenOnlyOwner {
                 index,
                 token_address,
@@ -125,9 +128,7 @@ fn construct(
     _chain_id: &u64,
     _stable_fee: &u64,
 ) -> ProgramResult {
-    verify_transaction_signatures(_accounts)?;
     verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
-
     let account_info_iter = &mut _accounts.iter();
     let owner_account = next_account_info(account_info_iter)?;
     let bridge_account = next_account_info(account_info_iter)?;
@@ -135,6 +136,10 @@ fn construct(
     let dtc_account = next_account_info(account_info_iter)?;
     let token_added_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
+
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
     let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
     let mut claimed_data = ClaimedDictionary::unpack_from_slice(&claimed_account.data.borrow())?;
@@ -226,7 +231,6 @@ fn transfer_request(
     let token_list_account = next_account_info(account_info_iter)?;
     let mint_account = next_account_info(account_info_iter)?;
     let source_account = next_account_info(account_info_iter)?;
-    let token_program = next_account_info(account_info_iter)?;
     let calculate_fee_result_account = next_account_info(account_info_iter)?;
     let bridge_token_account = next_account_info(account_info_iter)?;
     let source_account_owner_account = next_account_info(account_info_iter)?;
@@ -308,9 +312,9 @@ fn transfer_request(
         .insert(_token_index, token_data.try_to_vec().unwrap());
 
     // CPI to transfer tokens from transaction sender to bridge program token account
-    let mint_data = spl_token::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
-    let transfer_from_ix = spl_token::instruction::transfer_checked(
-        token_program.key,
+    let mint_data = spl_token_2022::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
+    let transfer_from_ix = spl_token_2022::instruction::transfer_checked(
+        &spl_token_2022::id(),
         source_account.key,
         mint_account.key,
         bridge_token_account.key,
@@ -341,12 +345,15 @@ fn update_verify_address(
     _accounts: &[AccountInfo],
     _verify_address: &Pubkey,
 ) -> ProgramResult {
-    verify_transaction_signatures(_accounts)?;
     verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
 
     let account_info_iter = &mut _accounts.iter();
     let owner_account = next_account_info(account_info_iter)?;
     let bridge_account = next_account_info(account_info_iter)?;
+
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
     let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
 
@@ -364,13 +371,16 @@ fn update_token_limit(
     _token_index: u64,
     _limit: u64,
 ) -> ProgramResult {
-    verify_transaction_signatures(_accounts)?;
     verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
 
     let account_info_iter = &mut _accounts.iter();
     let owner_account = next_account_info(account_info_iter)?;
     let bridge_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
+
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
     let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
     let mut token_list_data =
@@ -412,13 +422,16 @@ fn set_token_limit_time(
     _token_index: u64,
     _timestamp: u64,
 ) -> ProgramResult {
-    verify_transaction_signatures(_accounts)?;
     verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
 
     let account_info_iter = &mut _accounts.iter();
     let owner_account = next_account_info(account_info_iter)?;
     let bridge_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
+
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
     let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
     let mut token_list_data =
@@ -459,11 +472,14 @@ fn update_stable_fee(
     _accounts: &[AccountInfo],
     _new_stable_fee: u64,
 ) -> ProgramResult {
-    verify_transaction_signatures(_accounts)?;
     verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
     let account_info_iter = &mut _accounts.iter();
     let owner_account = next_account_info(account_info_iter)?;
     let bridge_account = next_account_info(account_info_iter)?;
+
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
     let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
     verify_program_accounts_initialization(Some(&bridge_data), None, None, None, None, true)?;
@@ -496,13 +512,16 @@ fn update_token_fee(
     _index: u64,
     _new_token_fee: u64,
 ) -> ProgramResult {
-    verify_transaction_signatures(_accounts)?;
     verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
 
     let account_info_iter = &mut _accounts.iter();
     let owner_account = next_account_info(account_info_iter)?;
     let bridge_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
+
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
     let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
     let mut token_list_data =
@@ -558,6 +577,79 @@ fn update_fees(
     Ok(())
 }
 
+fn withdraw_fees(_program_id: &Pubkey, _accounts: &[AccountInfo], _index: u64) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let owner_token_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?;
+    let bridge_pda_account = next_account_info(account_info_iter)?; // the PDA account created by bridge
+    let bridge_token_account = next_account_info(account_info_iter)?; // PDA token account c
+    let mint_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
+
+    verify_program_accounts_ownership(&_program_id, _accounts[1..3].as_ref())?;
+
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+
+    only_owner(owner_account, &bridge_data)?;
+
+    if !token_list_data.token_list_dictionary.contains_key(&_index) {
+        return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
+    }
+
+    let mut token_data =
+        TokenData::try_from_slice(&token_list_data.token_list_dictionary.get(&_index).unwrap())
+            .unwrap();
+
+    if !(token_data.total_fees_collected > 0) {
+        return Err(ProgramError::Custom(BridgeError::NothingToWithdraw as u32));
+    }
+
+    let to_transfer = token_data.total_fees_collected;
+    token_data.total_fees_collected = 0;
+
+    if token_data.token_address != *mint_account.key {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    let mint_data = spl_token_2022::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
+    // let seeds = bridge_pda_account_seed(_program_id, mint_account);
+    let seeds = format!("{}bridge_pda_account", _program_id);
+    let (pda, nonce) = Pubkey::find_program_address(&[seeds.as_bytes()], _program_id);
+
+    let transfer_ix = spl_token_2022::instruction::transfer_checked(
+        &spl_token_2022::id(),
+        bridge_token_account.key,
+        mint_account.key,
+        owner_token_account.key,
+        &pda,
+        &[&pda],
+        to_transfer,
+        mint_data.decimals,
+    )?;
+
+    program::invoke_signed(
+        &transfer_ix,
+        &[
+            bridge_token_account.clone(),
+            mint_account.clone(),
+            owner_token_account.clone(),
+            bridge_pda_account.clone(),
+        ],
+        &[&[seeds.as_bytes(), &[nonce]]],
+    )?;
+
+    let token_data: Vec<u8> = token_data.try_to_vec().unwrap();
+
+    let _ = token_list_data
+        .token_list_dictionary
+        .insert(_index, token_data);
+    token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+    Ok(())
+}
+
 fn add_token(
     _program_id: &Pubkey,
     _accounts: &[AccountInfo],
@@ -566,7 +658,6 @@ fn add_token(
     _fee: u64,
     _limit: u64,
 ) -> ProgramResult {
-    verify_transaction_signatures(&_accounts[0..2])?;
     verify_program_accounts_ownership(&_program_id, _accounts[1..].as_ref())?;
 
     let account_info_iter = &mut _accounts.iter();
@@ -574,6 +665,10 @@ fn add_token(
     let bridge_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
     let token_added_account = next_account_info(account_info_iter)?;
+
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
     let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
     let mut token_list_data =
@@ -637,13 +732,16 @@ fn pause_token(
     _accounts: &[AccountInfo],
     _token_index: u64,
 ) -> ProgramResult {
-    verify_transaction_signatures(&_accounts[..2])?;
     verify_program_accounts_ownership(&_program_id, _accounts[1..].as_ref())?;
 
     let account_info_iter = &mut _accounts.iter();
     let owner_account = next_account_info(account_info_iter)?;
     let bridge_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
+
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
     let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
     let mut token_list_data =
@@ -695,13 +793,16 @@ fn unpause_token(
     _accounts: &[AccountInfo],
     _token_index: u64,
 ) -> ProgramResult {
-    verify_transaction_signatures(&_accounts[..2])?;
     verify_program_accounts_ownership(&_program_id, _accounts[1..].as_ref())?;
 
     let account_info_iter = &mut _accounts.iter();
     let owner_account = next_account_info(account_info_iter)?;
     let bridge_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
+
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
     let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
     let mut token_list_data =
@@ -1124,3 +1225,12 @@ fn only_owner(_owner_account: &AccountInfo, bridge_data: &Bridge) -> ProgramResu
     }
     Ok(())
 }
+
+// fn bridge_pda_account_seed(_program_id: &Pubkey, _mint_account: &AccountInfo) -> String {
+//     let mint_data: spl_token_2022::state::Mint =
+//         spl_token_2022::state::Mint::unpack_from_slice(&_mint_account.data.borrow())?;
+//     format!(
+//         "{}{}{}{}",
+//         _program_id, *_mint_account.key, *_mint_account.owner, mint_data.decimals
+//     )
+// }

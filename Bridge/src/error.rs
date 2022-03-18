@@ -20,6 +20,8 @@ pub enum BridgeError {
     TokenAlreadyUnaused,
     #[error("Cannot request to same chain.")]
     RequestToSameChain,
+    #[error("Nothing to withdraw.")]
+    NothingToWithdraw,
 }
 
 impl From<BridgeError> for ProgramError {
