@@ -24,7 +24,7 @@ pub enum BridgeInstruction {
     /// 2. `[writeable]` The account used as 'token_list' dictionary
     /// 3. `[]` the token mint account found at 'token_index' in token_list dictionary
     /// 4. `[writable]` the token account of token sender
-    /// 5. `[]` the CalculateFeeResult account
+    /// 5. `[writeable]` the CalculateFeeResult account
     /// 6. `[writable]` the Token account of Bridge
     /// 7. `[signer]` the sender token account's owner
     TransferRequest {
@@ -33,6 +33,16 @@ pub enum BridgeInstruction {
         amount: u64,
         chain_id: u64,
     },
+    /// Accounts expected
+    /// 0. `[writeable]` The account used as global storage of Bridge program
+    /// 1. `[writeable]` The account used as 'claimed' dictionary
+    /// 2. `[writeable]` The account used as 'token_list' dictionary
+    /// 3. `[writable]` The account used as 'daily_token_claims' dictionary
+    /// 4. `[signer]` The signatory account.
+    /// 5. `[writeable]` The token mint account for this token data's mint.
+    /// 6. `[signer, writeable]` Bridge's associated token account for this mint.
+    /// 7. `[signer, writeable]` receiver's associated token account for this mint.
+    /// 8. `[signer]` The bridge PDA account
     TransferReceipt {
         token_index: u64,
         from: Pubkey,
@@ -40,7 +50,7 @@ pub enum BridgeInstruction {
         amount: u64,
         chain_id: u64,
         index: u64,
-        signature: Vec<u8>,
+        signature_account: Pubkey,
     },
     /// Accounts expected
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.

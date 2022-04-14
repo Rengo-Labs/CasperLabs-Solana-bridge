@@ -22,6 +22,12 @@ pub enum BridgeError {
     RequestToSameChain,
     #[error("Nothing to withdraw.")]
     NothingToWithdraw,
+    #[error("Token doesn't exist.")]
+    NonExistantToken,
+    #[error("Token already claimed.")]
+    AlreadyClaimed,
+    #[error("Cannot claim above daily limit.")]
+    ClaimAboveDailyLimit,
 }
 
 impl From<BridgeError> for ProgramError {

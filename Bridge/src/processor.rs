@@ -15,7 +15,6 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
     sysvar::Sysvar,
-    ed25519_program,
 };
 use spl_token_2022;
 use std::collections::BTreeMap;
@@ -59,8 +58,18 @@ impl Processor {
                 amount,
                 chain_id,
                 index,
-                signature,
-            } => Ok(()),
+                signature_account,
+            } => transfer_receipt(
+                program_id,
+                accounts,
+                token_index,
+                &from,
+                &to,
+                amount,
+                chain_id,
+                index,
+                &signature_account,
+            ),
             BridgeInstruction::UpdateVerifyAddressOnlyOwner { verify_address } => {
                 update_verify_address(program_id, accounts, &verify_address)
             }
@@ -337,6 +346,144 @@ fn transfer_request(
 
     token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
     bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
+    Ok(())
+}
+
+fn transfer_receipt(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _token_index: u64,
+    _from: &Pubkey,
+    _to: &Pubkey,
+    _amount: u64,
+    _chain_id: u64,
+    _index: u64,
+    _signature_account: &Pubkey,
+) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let bridge_account = next_account_info(account_info_iter)?;
+    let claimed_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
+    let daily_token_claims_account = next_account_info(account_info_iter)?;
+    let signature_account = next_account_info(account_info_iter)?;
+    let mint_account = next_account_info(account_info_iter)?;
+    let bridge_token_account = next_account_info(account_info_iter)?;
+    let receiver_token_account = next_account_info(account_info_iter)?;
+    let bridge_pda_account = next_account_info(account_info_iter)?;
+
+    if !signature_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if *signature_account.key != *_signature_account {
+        return Err(ProgramError::InvalidInstructionData);
+    }
+    verify_program_accounts_ownership(_program_id, _accounts[..4].as_ref())?;
+
+    let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+    let mut claimed_data = ClaimedDictionary::unpack_from_slice(*claimed_account.data.borrow())?;
+
+    let token_data_bytes = match token_list_data.token_list_dictionary.get_mut(&_token_index) {
+        None => return Err(ProgramError::InvalidInstructionData),
+        Some(v) => v,
+    };
+
+    let mut token_data: TokenData = TokenData::try_from_slice(token_data_bytes)?;
+
+    if !token_data.exists {
+        return Err(ProgramError::Custom(BridgeError::NonExistantToken as u32));
+    }
+    if !token_data.paused {
+        return Err(ProgramError::Custom(BridgeError::TokenAlreadyPaused as u32));
+    }
+    if bridge_data.chain_id == _chain_id {
+        return Err(ProgramError::Custom(BridgeError::RequestToSameChain as u32));
+    }
+
+    let &mut claimed = claimed_data
+        .claimed_dictionary
+        .get_mut(&ClaimedDictionary::generate_key(_chain_id, _index))
+        .unwrap();
+    if !claimed {
+        return Err(ProgramError::Custom(BridgeError::AlreadyClaimed as u32));
+    }
+
+    let mut daily_token_claims_data: DailyTokenClaimsDictionary;
+    if token_data.limit > 0 {
+        _update_daily_limit(
+            _program_id,
+            &[
+                token_list_account.clone(),
+                daily_token_claims_account.clone(),
+            ],
+            _index,
+        )?;
+        daily_token_claims_data = DailyTokenClaimsDictionary::unpack_from_slice(
+            &daily_token_claims_account.data.borrow(),
+        )?;
+        if daily_token_claims_data
+            .daily_token_claims_dictionary
+            .get(&_index)
+            .unwrap()
+            + _amount
+            <= token_data.limit
+        {
+            return Err(ProgramError::Custom(
+                BridgeError::ClaimAboveDailyLimit as u32,
+            ));
+        }
+    }
+
+    if token_data.token_address != *mint_account.key {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if *receiver_token_account.key != *_to {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let mint_data = spl_token_2022::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
+    // let seeds = bridge_pda_account_seed(_program_id, mint_account);
+    let seeds = format!("{}bridge_pda_account", _program_id);
+    let (pda, nonce) = Pubkey::find_program_address(&[seeds.as_bytes()], _program_id);
+
+    let transfer_ix = spl_token_2022::instruction::transfer_checked(
+        &spl_token_2022::id(),
+        bridge_token_account.key,
+        mint_account.key,
+        receiver_token_account.key,
+        &pda,
+        &[&pda],
+        _amount,
+        mint_data.decimals,
+    )?;
+
+    program::invoke_signed(
+        &transfer_ix,
+        &[
+            bridge_token_account.clone(),
+            mint_account.clone(),
+            receiver_token_account.clone(),
+            bridge_pda_account.clone(),
+        ],
+        &[&[seeds.as_bytes(), &[nonce]]],
+    )?;
+
+    let _ = claimed_data
+        .claimed_dictionary
+        .insert(ClaimedDictionary::generate_key(_chain_id, _index), true)
+        .unwrap();
+    daily_token_claims_data =
+        DailyTokenClaimsDictionary::unpack_from_slice(&daily_token_claims_account.data.borrow())?;
+    let temp = daily_token_claims_data
+        .daily_token_claims_dictionary
+        .get_mut(&_token_index)
+        .unwrap();
+    *temp = *temp + _amount;
+
+    claimed_data.pack_into_slice(&mut &mut claimed_account.data.borrow_mut()[..]);
+    daily_token_claims_data
+        .pack_into_slice(&mut &mut daily_token_claims_account.data.borrow_mut()[..]);
+
     Ok(())
 }
 
@@ -856,30 +1003,25 @@ fn _update_daily_limit(
     _accounts: &[AccountInfo],
     _token_index: u64,
 ) -> ProgramResult {
-    verify_transaction_signatures(&_accounts[..2])?;
-    verify_program_accounts_ownership(&_program_id, _accounts[1..].as_ref())?;
+    verify_program_accounts_ownership(&_program_id, _accounts.as_ref())?;
 
     let account_info_iter = &mut _accounts.iter();
-    let owner_account = next_account_info(account_info_iter)?;
-    let bridge_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
     let daily_token_claims_account = next_account_info(account_info_iter)?;
 
-    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
     let mut token_list_data =
         TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
     let mut daily_token_claims_data =
         DailyTokenClaimsDictionary::unpack_from_slice(&daily_token_claims_account.data.borrow())?;
 
     verify_program_accounts_initialization(
-        Some(&bridge_data),
         None,
         None,
+        Some(&daily_token_claims_data),
         Some(&token_list_data),
         None,
         true,
     )?;
-    only_owner(&owner_account, &bridge_data)?;
 
     if token_list_data
         .token_list_dictionary
