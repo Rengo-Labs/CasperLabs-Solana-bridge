@@ -1,23 +1,20 @@
+use crate::error::WPOKTError;
 use crate::instruction::WPOKTInstruction;
-use crate::state::WPOKT;
+use crate::state::{AuthorizationStateDictionary, NoncesDictionary, WPOKT};
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshDeserialize;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
+    clock::Clock,
     entrypoint::ProgramResult,
     program,
     program_error::ProgramError,
     program_pack::Pack,
     pubkey::Pubkey,
-    system_instruction,
+    sysvar::Sysvar,
 };
 use spl_token_2022;
-
-const EIP712DOMAIN_HASH: [u8; 32] = [0_u8; 32];
-const NAME_HASH: [u8; 32] = [0_u8; 32];
-const VERSION_HASH: [u8; 32] = [0_u8; 32];
-const PERMIT_TYPEHASH: [u8; 32] = [0_u8; 32];
-const TRANSFER_WITH_AUTHORIZATION_TYPEHASH: [u8; 32] = [0_u8; 32];
+use std::collections::BTreeMap;
 
 pub struct Processor {}
 impl Processor {
@@ -32,15 +29,33 @@ impl Processor {
             WPOKTInstruction::Construct { initial_minter } => {
                 construct(program_id, accounts, &initial_minter)
             }
-
-            WPOKTInstruction::GetChainId => get_chain_id(program_id, accounts),
-            WPOKTInstruction::GetDomainSeparator => Ok(()),
             WPOKTInstruction::MintOnlyMinter { to, value } => mint(program_id, accounts, to, value),
             WPOKTInstruction::ChangeMinterOnlyMinter { new_minter } => {
                 change_minter(program_id, accounts, new_minter)
             }
-            WPOKTInstruction::Permit => Ok(()),
-            WPOKTInstruction::TransferWithAuthorization => Ok(()),
+            WPOKTInstruction::Permit {
+                owner,
+                spender,
+                value,
+                deadline,
+            } => permit(program_id, accounts, owner, spender, value, deadline),
+            WPOKTInstruction::TransferWithAuthorization {
+                from,
+                to,
+                value,
+                valid_after,
+                valid_before,
+                nonce,
+            } => transfer_with_authorization(
+                program_id,
+                accounts,
+                from,
+                to,
+                value,
+                valid_after,
+                valid_before,
+                nonce,
+            ),
         }
     }
 }
@@ -53,8 +68,16 @@ fn construct(
     let account_info_iter = &mut _accounts.iter();
     let mint_account = next_account_info(account_info_iter)?;
     let wpokt_account = next_account_info(account_info_iter)?;
+    let nonces_account = next_account_info(account_info_iter)?;
+    let authorization_state_account = next_account_info(account_info_iter)?;
 
     if *wpokt_account.owner != *_program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    if *nonces_account.owner != *_program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    if *authorization_state_account.owner != *_program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
 
@@ -71,17 +94,25 @@ fn construct(
     wpokt_data.minter = *_initial_minter;
     wpokt_data.mint = *mint_account.key;
     wpokt_data.is_initialized = true;
+
+    let mut nonces_data = NoncesDictionary::unpack_from_slice(&nonces_account.data.borrow())?;
+    nonces_data.nonces_dictionary = BTreeMap::new();
+    nonces_data.is_initialized = true;
+
+    let mut authorization_state_data = AuthorizationStateDictionary::unpack_from_slice(
+        &authorization_state_account.data.borrow(),
+    )?;
+    authorization_state_data.authorization_state_dictionary = BTreeMap::new();
+    authorization_state_data.is_initialized = true;
+
     wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
+    nonces_data.pack_into_slice(&mut &mut nonces_account.data.borrow_mut()[..]);
+    authorization_state_data
+        .pack_into_slice(&mut &mut authorization_state_account.data.borrow_mut()[..]);
 
     Ok(())
 }
 
-fn get_chain_id(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
-    Ok(())
-}
-fn get_domain_separator(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
-    Ok(())
-}
 fn mint(
     _program_id: &Pubkey,
     _accounts: &[AccountInfo],
@@ -131,6 +162,7 @@ fn mint(
     )?;
     Ok(())
 }
+
 fn change_minter(
     _program_id: &Pubkey,
     _accounts: &[AccountInfo],
@@ -174,9 +206,124 @@ fn change_minter(
     Ok(())
 }
 
-fn permit(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
+fn permit(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    owner: Pubkey,
+    spender: Pubkey,
+    value: u64,
+    deadline: u64,
+) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let nonces_account = next_account_info(account_info_iter)?;
+    let src_token_account_owner = next_account_info(account_info_iter)?;
+    let src_token_account = next_account_info(account_info_iter)?;
+    let delegate_account = next_account_info(account_info_iter)?;
+
+    if *delegate_account.key != spender {
+        return Err(ProgramError::InvalidInstructionData);
+    }
+    let clock = Clock::get()?;
+    let current_timestamp = clock.unix_timestamp as u64;
+
+    if deadline >= current_timestamp {
+        return Err(ProgramError::Custom(WPOKTError::AuthExpired as u32));
+    }
+
+    let mut nonces_data = NoncesDictionary::unpack_from_slice(&nonces_account.data.borrow())?;
+    let current_nonce = nonces_data.nonces_dictionary.get_mut(&owner).unwrap();
+    *current_nonce += 1;
+
+    nonces_data.pack_into_slice(&mut &mut nonces_account.data.borrow_mut()[..]);
+
+    let approve_ix = spl_token_2022::instruction::approve(
+        &spl_token_2022::id(),
+        src_token_account.key,
+        delegate_account.key,
+        src_token_account_owner.key,
+        &[
+            &src_token_account.key,
+            &delegate_account.key,
+            &src_token_account_owner.key,
+        ],
+        value,
+    )?;
+    program::invoke(
+        &approve_ix,
+        &[
+            src_token_account.clone(),
+            delegate_account.clone(),
+            src_token_account_owner.clone(),
+        ],
+    )?;
     Ok(())
 }
-fn transfer_with_authorization(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
+
+fn transfer_with_authorization(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _from: Pubkey,
+    _to: Pubkey,
+    _value: u64,
+    _valid_after: u64,
+    _valid_before: u64,
+    _nonce: String,
+) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let authorization_state_account = next_account_info(account_info_iter)?;
+    let mint_account = next_account_info(account_info_iter)?;
+    let src_token_account = next_account_info(account_info_iter)?;
+    let src_token_account_owner_account = next_account_info(account_info_iter)?;
+    let destination_account = next_account_info(account_info_iter)?;
+
+    let clock = Clock::get()?;
+    let current_timestamp = clock.unix_timestamp as u64;
+
+    if current_timestamp >= _valid_before {
+        return Err(ProgramError::Custom(WPOKTError::AuthExpired as u32));
+    }
+    if current_timestamp <= _valid_after {
+        return Err(ProgramError::Custom(WPOKTError::AuthNotYetValid as u32));
+    }
+
+    let mut authorization_state_data = AuthorizationStateDictionary::unpack_from_slice(
+        &authorization_state_account.data.borrow(),
+    )?;
+
+    let auth_state = authorization_state_data
+        .authorization_state_dictionary
+        .get_mut(&AuthorizationStateDictionary::generate_key(_from, _nonce))
+        .unwrap();
+
+    if !*auth_state {
+        return Err(ProgramError::Custom(WPOKTError::AuthAlreadyUsed as u32));
+    }
+
+    *auth_state = true;
+    authorization_state_data
+        .pack_into_slice(&mut &mut authorization_state_account.data.borrow_mut()[..]);
+
+    let mint_data = spl_token_2022::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
+    let transfer_ix = spl_token_2022::instruction::transfer_checked(
+        &spl_token_2022::id(),
+        src_token_account.key,
+        mint_account.key,
+        destination_account.key,
+        src_token_account_owner_account.key,
+        &[src_token_account_owner_account.key],
+        _value,
+        mint_data.decimals,
+    )?;
+
+    program::invoke(
+        &transfer_ix,
+        &[
+            src_token_account.clone(),
+            mint_account.clone(),
+            destination_account.clone(),
+            src_token_account_owner_account.clone(),
+        ],
+    )?;
+
     Ok(())
 }
