@@ -1,4 +1,4 @@
-.vscode
-test-ledger
-target
-Cargo.lock
+build/*
+!build/
+node_modules/
+package-lock.json

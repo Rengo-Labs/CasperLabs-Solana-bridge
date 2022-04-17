@@ -74,88 +74,88 @@ fn setup_program_test() -> (Pubkey, ProgramTest) {
     (wpokt_program_id, program_test)
 }
 
-#[tokio::test]
-async fn test_program_test_creation() {
-    let (_, program_test) = setup_program_test();
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+// #[tokio::test]
+// async fn test_program_test_creation() {
+//     let (_, program_test) = setup_program_test();
+//     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
-    let spl_token_2022_account: Account = banks_client
-        .get_account(spl_token_2022::id())
-        .await
-        .expect("get_account")
-        .expect("token acc not found");
-    assert_eq!(spl_token_2022_account.executable, true);
-}
+//     let spl_token_2022_account: Account = banks_client
+//         .get_account(spl_token_2022::id())
+//         .await
+//         .expect("get_account")
+//         .expect("token acc not found");
+//     assert_eq!(spl_token_2022_account.executable, true);
+// }
 
-#[tokio::test]
-async fn test_wpokt_instruction_construct() {
-    let (wpokt_program_id, mut program_test) = setup_program_test();
-    let wpokt_account = Keypair::new();
-    let mint = Keypair::new();
-    let initial_minter = Keypair::new();
+// #[tokio::test]
+// async fn test_wpokt_instruction_construct() {
+//     let (wpokt_program_id, mut program_test) = setup_program_test();
+//     let wpokt_account = Keypair::new();
+//     let mint = Keypair::new();
+//     let initial_minter = Keypair::new();
 
-    program_test.add_account(
-        mint.pubkey(),
-        Account {
-            lamports: 1000000,
-            owner: spl_token_2022::id(),
-            data: vec![0_u8; spl_token_2022::state::Mint::LEN],
-            ..Account::default()
-        },
-    );
-    program_test.add_account(
-        wpokt_account.pubkey(),
-        Account {
-            lamports: 1000000,
-            owner: wpokt_program_id,
-            data: vec![0_u8; wpokt::state::WPOKT::LEN],
-            ..Account::default()
-        },
-    );
-    program_test.add_account(
-        initial_minter.pubkey(),
-        Account {
-            lamports: 1000000,
-            ..Account::default()
-        },
-    );
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
-    // setup tx
-    let instruction_args = wpokt::instruction::WPOKTInstruction::Construct {
-        initial_minter: initial_minter.pubkey(),
-    };
-    let mut tx = Transaction::new_with_payer(
-        &[Instruction::new_with_borsh(
-            wpokt_program_id,
-            &instruction_args,
-            vec![
-                AccountMeta::new(mint.pubkey(), false),
-                AccountMeta::new(wpokt_account.pubkey(), false),
-            ],
-        )],
-        Some(&payer.pubkey()),
-    );
-    tx.sign(&vec![&payer], recent_blockhash);
-    // send tx
-    banks_client.process_transaction(tx).await.unwrap();
-    // banks_client.send_transaction_with_context(
-    //     program_test_context,
-    //     tx
-    // ).await;
-    // let mint_account: Account = banks_client
-    //     .get_account(mint.pubkey())
-    //     .await
-    //     .expect("get_account")
-    //     .expect("mint acc not found");
+//     program_test.add_account(
+//         mint.pubkey(),
+//         Account {
+//             lamports: 1000000,
+//             owner: spl_token_2022::id(),
+//             data: vec![0_u8; spl_token_2022::state::Mint::LEN],
+//             ..Account::default()
+//         },
+//     );
+//     program_test.add_account(
+//         wpokt_account.pubkey(),
+//         Account {
+//             lamports: 1000000,
+//             owner: wpokt_program_id,
+//             data: vec![0_u8; wpokt::state::WPOKT::LEN],
+//             ..Account::default()
+//         },
+//     );
+//     program_test.add_account(
+//         initial_minter.pubkey(),
+//         Account {
+//             lamports: 1000000,
+//             ..Account::default()
+//         },
+//     );
+//     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+//     // setup tx
+//     let instruction_args = wpokt::instruction::WPOKTInstruction::Construct {
+//         initial_minter: initial_minter.pubkey(),
+//     };
+//     let mut tx = Transaction::new_with_payer(
+//         &[Instruction::new_with_borsh(
+//             wpokt_program_id,
+//             &instruction_args,
+//             vec![
+//                 AccountMeta::new(mint.pubkey(), false),
+//                 AccountMeta::new(wpokt_account.pubkey(), false),
+//             ],
+//         )],
+//         Some(&payer.pubkey()),
+//     );
+//     tx.sign(&vec![&payer], recent_blockhash);
+//     // send tx
+//     banks_client.process_transaction(tx).await.unwrap();
+//     // banks_client.send_transaction_with_context(
+//     //     program_test_context,
+//     //     tx
+//     // ).await;
+//     // let mint_account: Account = banks_client
+//     //     .get_account(mint.pubkey())
+//     //     .await
+//     //     .expect("get_account")
+//     //     .expect("mint acc not found");
 
-    // let mint_acc_data = spl_token_2022::state::Mint::unpack_from_slice(&mint_account.data).unwrap();
-    // assert_eq!(
-    //     mint_acc_data
-    //         .mint_authority
-    //         .contains(&initial_minter.pubkey()),
-    //     true
-    // );
-}
+//     // let mint_acc_data = spl_token_2022::state::Mint::unpack_from_slice(&mint_account.data).unwrap();
+//     // assert_eq!(
+//     //     mint_acc_data
+//     //         .mint_authority
+//     //         .contains(&initial_minter.pubkey()),
+//     //     true
+//     // );
+// }
 // #[tokio::test]
 // async fn test_setup_program_test() {
 //     let (

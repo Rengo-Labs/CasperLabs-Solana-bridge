@@ -1,7 +1,7 @@
 use crate::error::WPoktError;
 use crate::instruction::WPoktInstruction;
 use crate::state::WPokt;
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -9,10 +9,8 @@ use solana_program::{
     program_error::ProgramError,
     program_pack::Pack,
     pubkey::Pubkey,
-    sysvar::{rent, Sysvar},
 };
 use spl_token_2022;
-use std::fmt::format;
 
 pub struct Processor {}
 impl Processor {
@@ -58,7 +56,7 @@ fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult
     wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
 
     let pda_seed = format!("{}WPokt", *wpokt_account.key);
-    let (pda, nonce) = Pubkey::find_program_address(&[pda_seed.as_bytes()], _program_id);
+    let (pda, _nonce) = Pubkey::find_program_address(&[pda_seed.as_bytes()], _program_id);
     // create init mint instruction
 
     let init_mint_ix = spl_token_2022::instruction::initialize_mint2(
