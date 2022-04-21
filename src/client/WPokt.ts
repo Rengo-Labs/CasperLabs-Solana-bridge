@@ -9,8 +9,6 @@ import {
 } from "@solana/web3.js";
 import fs from "mz/fs";
 import path from "path";
-// import * as borsh from "borsh";
-
 import { getPayer, getRpcUrl, createKeypairFromFile } from "./utils";
 
 /**
@@ -45,6 +43,7 @@ const PROGRAM_SO_PATH = path.join(PROGRAM_PATH, "w_pokt.so");
  * This file is created when running `solana program deploy build/w_pokt.so`
  */
 const PROGRAM_KEYPAIR_PATH = path.join(PROGRAM_PATH, "w_pokt-keypair.json");
+
 
 export const establishConnection = async () => {
   const rpcUrl = await getRpcUrl();
