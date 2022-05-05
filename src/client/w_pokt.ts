@@ -17,38 +17,7 @@ import fs from "mz/fs";
 import path from "path";
 import { getPayer, getRpcUrl, createKeypairFromFile } from "./utils";
 import { W_POKT_ACCOUNT_DATA_LAYOUT } from "./state";
-
-// const WPoktInstruction {
-//   /// Accounts expected:
-//   /// 0. `[signer]` The account of person deploying WPokt - the 'owner'.
-//   /// 1. `[writable]` The account used as WPokt's global state
-//   /// 2. `[]` the Mint account created by 'owner'.
-//   Construct,
-//   /// 0. `[signer]` The account of person deploying WPokt - the 'owner'.
-//   SetBridgeOnlyOwner :{ bridge_address: PublicKey },
-//   /// Accounts expected:
-//   /// 0. `[]` The program owner's account.
-//   /// 1. `[]` The account used as WPokt's global state
-//   /// 2. `[signer]` the account used by Bridge as global state.
-//   /// 3. `[writable]` the Mint account created by 'owner'.
-//   /// 4. `[writeable]` the token account to mint to.
-//   /// 5. `[]` The PDA account of WPokt to sign for mint
-//   MintOnlyBridge : { amount: BN },
-//   /// Accounts expected:
-//   /// 0. `[writable]` The token account to burn from.
-//   /// 1. `[signer]` the 0th token account's owner/delegate
-//   /// 2. `[writable]` the mint account
-//   Burn :{ amount: BN },
-//   /// Accounts expected:
-//   /// 0. `[signer]` The program owner's account.
-//   /// 1. `[writeable]` The account used as WPokt's global state
-//   RenounceOwnership,
-//   /// Accounts expected:
-//   /// 0. `[signer]` The program owner's account.
-//   /// 1. `[writeable]` The account used as WPokt's global state
-//   TransferOwnership: { new_owner: Pubkey },
-// } as const;
-
+import {WPoktInstruction} from './instructions';
 /**
  * Connection to the network
  */
@@ -207,6 +176,19 @@ export const initializeAccounts = async (
 
   const tx = new Transaction();
   tx.add(createOwnerAccountIx, createWPoktGlobalStateIx, createMintAccountIx);
+
+  // // create WPokt constructor instruction
+  // const ix = new TransactionInstruction({
+  //   programId,
+  //   keys: [
+  //     {pubkey: owner.publicKey, isSigner: true, isWritable: false},
+  //     {pubkey: global_state.publicKey, isSigner: false, isWritable: true},
+  //     {pubkey: mint.publicKey, isSigner: false, isWritable: true}
+  //   ],
+  //   data: Buffer.from(Uint8Array.of(0))
+  // });
+  // tx.add(ix);
+  
   await sendAndConfirmTransaction(connection, tx, [
     payer,
     owner,

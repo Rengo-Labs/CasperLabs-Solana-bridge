@@ -36,7 +36,7 @@ async function verifyAccountsCreation(
 
   // const wpokt_data = W_POKT_ACCOUNT_DATA_LAYOUT.decode(wpokt_acc.data);
   // const mint_data = AccountLayout.decode(mint_acc.data);
-  console.log("verifyAccountsCreation: Accounts creation verified.");
+  console.log("verifyAccountsCreation: Accounts creation and constriction verified.");
 }
 
 async function main() {

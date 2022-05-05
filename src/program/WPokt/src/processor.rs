@@ -38,14 +38,14 @@ impl Processor {
 
 fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
-    let mint_account = next_account_info(account_info_iter)?;
     let owner = next_account_info(account_info_iter)?;
+    let wpokt_account = next_account_info(account_info_iter)?;
+    let mint_account = next_account_info(account_info_iter)?;
 
     if !owner.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let wpokt_account = next_account_info(account_info_iter)?;
     if wpokt_account.owner != _program_id {
         return Err(ProgramError::IllegalOwner);
     }
@@ -57,8 +57,8 @@ fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult
 
     let pda_seed = format!("{}WPokt", *wpokt_account.key);
     let (pda, _nonce) = Pubkey::find_program_address(&[pda_seed.as_bytes()], _program_id);
+    
     // create init mint instruction
-
     let init_mint_ix = spl_token_2022::instruction::initialize_mint2(
         &spl_token_2022::id(),
         mint_account.key,
