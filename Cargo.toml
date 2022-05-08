@@ -1,0 +1,2 @@
+[workspace]
+members = ["src/program/Bridge", "src/program/WPOKT", "src/program/WPokt"]

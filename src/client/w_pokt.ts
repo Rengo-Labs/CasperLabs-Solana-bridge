@@ -17,7 +17,7 @@ import fs from "mz/fs";
 import path from "path";
 import { getPayer, getRpcUrl, createKeypairFromFile } from "./utils";
 import { W_POKT_ACCOUNT_DATA_LAYOUT } from "./state";
-import {WPoktInstruction} from './instructions';
+import { WPoktInstruction } from "./instructions";
 /**
  * Connection to the network
  */
@@ -36,7 +36,7 @@ let programId: PublicKey;
 /**
  * Path to program files
  */
-const PROGRAM_PATH = path.resolve(__dirname, "../../build");
+const PROGRAM_PATH = path.resolve(__dirname, "../../target/deploy/");
 
 /**
  * Path to program shared object file which should be deployed on chain.
@@ -134,6 +134,23 @@ export const checkOrDeployProgram = async () => {
   return programId;
 };
 
+export const wPoktPdaKey = async (
+  mintAcc: Keypair,
+  programId: PublicKey
+): Promise<PublicKey> => {
+  let seeds = [mintAcc.publicKey.toBytes(), programId.toBytes()];
+  const [wpokt_pda, seedBump] = await PublicKey.findProgramAddress(
+    seeds,
+    programId
+  );
+  const newSeeds = seeds.push(Buffer.of(seedBump));
+  const [_wpokt_pda] = await PublicKey.findProgramAddress(
+    seeds,
+    programId
+  );
+  return _wpokt_pda;
+};
+
 /**
  * Genarates randon keypairs and creates Owner, WPokt and Mint system accounts with appropriate data field layout.
  * @param programId The program id of WPokt program
@@ -141,10 +158,10 @@ export const checkOrDeployProgram = async () => {
  */
 export const initializeAccounts = async (
   programId: PublicKey
-): Promise<[Keypair, Keypair, Keypair]> => {
+): Promise<[Keypair, PublicKey, Keypair]> => {
   const owner = Keypair.generate();
-  const global_state = Keypair.generate();
   const mint = Keypair.generate();
+  const global_state = await wPoktPdaKey(mint, programId);
 
   const createOwnerAccountIx = SystemProgram.createAccount({
     programId: SystemProgram.programId,
@@ -161,7 +178,7 @@ export const initializeAccounts = async (
       W_POKT_ACCOUNT_DATA_LAYOUT.span
     ),
     fromPubkey: payer.publicKey,
-    newAccountPubkey: global_state.publicKey,
+    newAccountPubkey: global_state,
   });
 
   const createMintAccountIx = SystemProgram.createAccount({
@@ -175,24 +192,24 @@ export const initializeAccounts = async (
   });
 
   const tx = new Transaction();
-  tx.add(createOwnerAccountIx, createWPoktGlobalStateIx, createMintAccountIx);
+  tx.add(createOwnerAccountIx, createMintAccountIx);
 
-  // // create WPokt constructor instruction
-  // const ix = new TransactionInstruction({
-  //   programId,
-  //   keys: [
-  //     {pubkey: owner.publicKey, isSigner: true, isWritable: false},
-  //     {pubkey: global_state.publicKey, isSigner: false, isWritable: true},
-  //     {pubkey: mint.publicKey, isSigner: false, isWritable: true}
-  //   ],
-  //   data: Buffer.from(Uint8Array.of(0))
-  // });
-  // tx.add(ix);
-  
+  // create WPokt constructor instruction
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: owner.publicKey, isSigner: true, isWritable: false },
+      { pubkey: global_state, isSigner: false, isWritable: true },
+      { pubkey: mint.publicKey, isSigner: false, isWritable: true },
+    ],
+    data: Buffer.from(Uint8Array.of(0)),
+  });
+  tx.add(ix);
+
   await sendAndConfirmTransaction(connection, tx, [
     payer,
     owner,
-    global_state,
+    // global_state,
     mint,
   ]);
 

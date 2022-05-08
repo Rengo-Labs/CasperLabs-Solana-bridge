@@ -12,11 +12,11 @@ async function verifyAccountsCreation(
   connection: Connection,
   programId: PublicKey,
   owner: Keypair,
-  wpokt: Keypair,
+  wpokt: PublicKey,
   mint: Keypair
 ) {
   let owner_acc = await connection.getAccountInfo(owner.publicKey);
-  let wpokt_acc = await connection.getAccountInfo(wpokt.publicKey);
+  let wpokt_acc = await connection.getAccountInfo(wpokt);
   let mint_acc = await connection.getAccountInfo(mint.publicKey);
 
   if (owner_acc === null || owner_acc.data.length === 0) {

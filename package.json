@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "deploy:w_pokt": "solana program deploy build/w_pokt.so",
-    "start": "npm run deploy:w_pokt && ts-node src/client/main.ts",
+    "deploy:w_pokt": "solana program deploy target/deploy/w_pokt.so",
+    "start": "npm run build:program && npm run deploy:w_pokt && ts-node src/client/main.ts",
     "start-with-test-validator": "start-server-and-test 'solana-test-validator --reset --quiet' http://localhost:8899/health start",
-    "build:program": "cargo build-bpf --manifest-path=./src/program/Cargo.toml --bpf-out-dir=./build",
-    "clean:program": "cargo clean --manifest-path=./src/program/Cargo.toml && rm -rf ./build",
-    "test:program": "cargo test-bpf --manifest-path=./src/program/Cargo.toml",
-    "fmt:program": "cargo fmt --manifest-path=./src/program/Cargo.toml"
+    "build:program": "cargo build-bpf --manifest-path=./Cargo.toml",
+    "clean:program": "cargo clean --manifest-path=./Cargo.toml && rm -rf ./build",
+    "test:program": "cargo test-bpf --manifest-path=./Cargo.toml",
+    "fmt:program": "cargo fmt --manifest-path=./Cargo.toml --all"
   },
   "repository": {
     "type": "git",
