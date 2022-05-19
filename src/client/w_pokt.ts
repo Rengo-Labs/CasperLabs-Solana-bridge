@@ -155,37 +155,8 @@ export const wPoktPdaKey = async (
 export const initializeAccounts = async (
   programId: PublicKey
 ): Promise<[Keypair, PublicKey, Keypair]> => {
-  const owner = Keypair.generate();
   const mint = Keypair.generate();
   const global_state = await wPoktPdaKey(mint, programId);
-
-  // const createOwnerAccountIx = SystemProgram.createAccount({
-  //   programId: SystemProgram.programId,
-  //   space: W_POKT_ACCOUNT_DATA_LAYOUT.span,
-  //   lamports: await connection.getMinimumBalanceForRentExemption(100), // arbitrary min length
-  //   fromPubkey: payer.publicKey,
-  //   newAccountPubkey: owner.publicKey,
-  // });
-
-  // let airdropSignatureToAccount = await connection.requestAirdrop(
-  //   payer.publicKey,
-  //   LAMPORTS_PER_SOL
-  // );
-
-  // const createWPoktGlobalStateIx = SystemProgram.createAccount({
-  //   programId,
-  //   space: W_POKT_ACCOUNT_DATA_LAYOUT.span,
-  //   lamports: await connection.getMinimumBalanceForRentExemption(
-  //     W_POKT_ACCOUNT_DATA_LAYOUT.span
-  //   ),
-  //   fromPubkey: payer.publicKey,
-  //   newAccountPubkey: global_state,
-  // });
-
-  console.log("Mint layout span: ", splToken.MintLayout.span);
-  console.log("Lamports required: ", await connection.getMinimumBalanceForRentExemption(
-    splToken.MintLayout.span
-  ));
 
   const createMintAccountIx = SystemProgram.createAccount({
     programId: splToken.TOKEN_PROGRAM_ID,
@@ -199,10 +170,8 @@ export const initializeAccounts = async (
 
   const tx = new Transaction();
   tx.add(
-    // createOwnerAccountIx, 
-    // createWPoktGlobalStateIx, 
     createMintAccountIx
-    );
+  );
 
   // create WPokt constructor instruction
   const ix = new TransactionInstruction({
@@ -211,7 +180,8 @@ export const initializeAccounts = async (
       { pubkey: payer.publicKey, isSigner: true, isWritable: true },
       { pubkey: global_state, isSigner: false, isWritable: true },
       { pubkey: mint.publicKey, isSigner: false, isWritable: true },
-      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false}
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
     data: Buffer.from(Uint8Array.of(0)),
   });
