@@ -134,21 +134,17 @@ export const checkOrDeployProgram = async () => {
   return programId;
 };
 
+// returns the WPokt PDA
 export const wPoktPdaKey = async (
   mintAcc: Keypair,
   programId: PublicKey
 ): Promise<PublicKey> => {
-  let seeds = [mintAcc.publicKey.toBytes(), programId.toBytes()];
+  let seeds: Uint8Array[] = [mintAcc.publicKey.toBytes(), Buffer.from("WPokt")];
   const [wpokt_pda, seedBump] = await PublicKey.findProgramAddress(
     seeds,
     programId
   );
-  const newSeeds = seeds.push(Buffer.of(seedBump));
-  const [_wpokt_pda] = await PublicKey.findProgramAddress(
-    seeds,
-    programId
-  );
-  return _wpokt_pda;
+  return wpokt_pda;
 };
 
 /**
@@ -163,44 +159,59 @@ export const initializeAccounts = async (
   const mint = Keypair.generate();
   const global_state = await wPoktPdaKey(mint, programId);
 
-  const createOwnerAccountIx = SystemProgram.createAccount({
-    programId: SystemProgram.programId,
-    space: W_POKT_ACCOUNT_DATA_LAYOUT.span,
-    lamports: await connection.getMinimumBalanceForRentExemption(100), // arbitrary min length
-    fromPubkey: payer.publicKey,
-    newAccountPubkey: owner.publicKey,
-  });
+  // const createOwnerAccountIx = SystemProgram.createAccount({
+  //   programId: SystemProgram.programId,
+  //   space: W_POKT_ACCOUNT_DATA_LAYOUT.span,
+  //   lamports: await connection.getMinimumBalanceForRentExemption(100), // arbitrary min length
+  //   fromPubkey: payer.publicKey,
+  //   newAccountPubkey: owner.publicKey,
+  // });
 
-  const createWPoktGlobalStateIx = SystemProgram.createAccount({
-    programId,
-    space: W_POKT_ACCOUNT_DATA_LAYOUT.span,
-    lamports: await connection.getMinimumBalanceForRentExemption(
-      W_POKT_ACCOUNT_DATA_LAYOUT.span
-    ),
-    fromPubkey: payer.publicKey,
-    newAccountPubkey: global_state,
-  });
+  // let airdropSignatureToAccount = await connection.requestAirdrop(
+  //   payer.publicKey,
+  //   LAMPORTS_PER_SOL
+  // );
+
+  // const createWPoktGlobalStateIx = SystemProgram.createAccount({
+  //   programId,
+  //   space: W_POKT_ACCOUNT_DATA_LAYOUT.span,
+  //   lamports: await connection.getMinimumBalanceForRentExemption(
+  //     W_POKT_ACCOUNT_DATA_LAYOUT.span
+  //   ),
+  //   fromPubkey: payer.publicKey,
+  //   newAccountPubkey: global_state,
+  // });
+
+  console.log("Mint layout span: ", splToken.MintLayout.span);
+  console.log("Lamports required: ", await connection.getMinimumBalanceForRentExemption(
+    splToken.MintLayout.span
+  ));
 
   const createMintAccountIx = SystemProgram.createAccount({
     programId: splToken.TOKEN_PROGRAM_ID,
-    space: splToken.AccountLayout.span,
+    space: splToken.MintLayout.span,
     lamports: await connection.getMinimumBalanceForRentExemption(
-      splToken.AccountLayout.span
+      splToken.MintLayout.span
     ),
     fromPubkey: payer.publicKey,
     newAccountPubkey: mint.publicKey,
   });
 
   const tx = new Transaction();
-  tx.add(createOwnerAccountIx, createMintAccountIx);
+  tx.add(
+    // createOwnerAccountIx, 
+    // createWPoktGlobalStateIx, 
+    createMintAccountIx
+    );
 
   // create WPokt constructor instruction
   const ix = new TransactionInstruction({
     programId,
     keys: [
-      { pubkey: owner.publicKey, isSigner: true, isWritable: false },
+      { pubkey: payer.publicKey, isSigner: true, isWritable: true },
       { pubkey: global_state, isSigner: false, isWritable: true },
       { pubkey: mint.publicKey, isSigner: false, isWritable: true },
+      {pubkey: SystemProgram.programId, isSigner: false, isWritable: false}
     ],
     data: Buffer.from(Uint8Array.of(0)),
   });
@@ -208,10 +219,10 @@ export const initializeAccounts = async (
 
   await sendAndConfirmTransaction(connection, tx, [
     payer,
-    owner,
+    // owner,
     // global_state,
     mint,
   ]);
 
-  return [owner, global_state, mint];
+  return [payer, global_state, mint];
 };

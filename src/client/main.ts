@@ -19,7 +19,8 @@ async function verifyAccountsCreation(
   let wpokt_acc = await connection.getAccountInfo(wpokt);
   let mint_acc = await connection.getAccountInfo(mint.publicKey);
 
-  if (owner_acc === null || owner_acc.data.length === 0) {
+  // || owner_acc.data.length === 0
+  if (owner_acc === null) {
     console.log("owner_acc state account has not been initialized properly");
     process.exit(1);
   }
@@ -34,13 +35,11 @@ async function verifyAccountsCreation(
     process.exit(1);
   }
 
-  // const wpokt_data = W_POKT_ACCOUNT_DATA_LAYOUT.decode(wpokt_acc.data);
-  // const mint_data = AccountLayout.decode(mint_acc.data);
   console.log("verifyAccountsCreation: Accounts creation and constriction verified.");
 }
 
 async function main() {
-  console.log("---> main(): Establoshing connection...\n");
+  console.log("---> main(): Establishing connection...\n");
   const connection: Connection = await establishConnection();
 
   // Determine who pays for the fees

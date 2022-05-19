@@ -5,11 +5,13 @@ use borsh::BorshDeserialize;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program,
+    msg, program,
     program_error::ProgramError,
     program_pack::Pack,
     pubkey::Pubkey,
-    msg
+    rent::Rent,
+    system_instruction,
+    sysvar::Sysvar,
 };
 use spl_token_2022;
 
@@ -40,27 +42,54 @@ impl Processor {
 fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
     let owner = next_account_info(account_info_iter)?;
-    let wpokt_account = next_account_info(account_info_iter)?;
+    let wpokt_account = next_account_info(account_info_iter)?; // The PDA account
     let mint_account = next_account_info(account_info_iter)?;
+    let system_account = next_account_info(account_info_iter)?;
+
+    // // if *system_account.key != system_program::ID{
+    // //     return Err(ProgramError::InvalidInstructionData);
+    // // }
 
     if !owner.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    
-    if *wpokt_account.owner != *_program_id {
-        return Err(ProgramError::IllegalOwner);
+
+    // if *wpokt_account.owner != *_program_id {
+    //     return Err(ProgramError::IllegalOwner);
+    // }
+
+    // find WPokt PDA account key
+    let (_pda, _nonce) =
+        Pubkey::find_program_address(&[mint_account.key.as_ref(), b"WPokt"], _program_id);
+
+    if *wpokt_account.key != _pda {
+        return Err(ProgramError::InvalidAccountData);
     }
+    msg!("PDA created and WPokt address verified.");
+
+    let rent_sysvar = Rent::get()?;
+    msg!("Rent sysvar created.");
+    // create PDA account
+    let create_pda_acc_ix = system_instruction::create_account(
+        owner.key,
+        wpokt_account.key,
+        rent_sysvar.minimum_balance(WPokt::LEN),
+        WPokt::LEN.try_into().unwrap(),
+        _program_id,
+    );
+    msg!("PDA account init instruction created.");
+
+    program::invoke_signed(
+        &create_pda_acc_ix,
+        &[wpokt_account.clone(), owner.clone(), system_account.clone()],
+        &[&[mint_account.key.as_ref(), b"WPokt", &[_nonce]]],
+    )?;
 
     let mut wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
     wpokt_data.owner = *owner.key;
     wpokt_data.bridge_address = Pubkey::new(&[0_u8; 32]);
     wpokt_data.is_initialized = true;
     wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
-
-    let pda_seed: &[&[u8]] = &[mint_account.key.as_ref(), _program_id.as_ref()];
-    let (_pda, _nonce) = Pubkey::find_program_address(pda_seed, _program_id);
-    let pda_seed: &[&[u8]] = &[mint_account.key.as_ref(), _program_id.as_ref(), &[_nonce]];
-    let (_pda, _nonce) = Pubkey::find_program_address(pda_seed, _program_id);
 
     // create init mint instruction
     let init_mint_ix = spl_token_2022::instruction::initialize_mint2(
@@ -69,14 +98,15 @@ fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult
         wpokt_account.key,
         Some(wpokt_account.key),
         9,
-    )?; 
-
-    msg!("CPI SPL-Token-2022: InitializeMint2");
-    program::invoke_signed(
-        &init_mint_ix,
-        &[mint_account.clone()],
-        &[pda_seed],
     )?;
+
+    // TODO spl-token-2022 program account not found
+    // msg!("CPI SPL-Token-2022: InitializeMint2");
+    // program::invoke_signed(
+    //     &init_mint_ix,
+    //     &[mint_account.clone()],
+    //     &[&[mint_account.key.as_ref(), b"WPokt", &[_nonce]]],
+    // )?;
     Ok(())
 }
 
