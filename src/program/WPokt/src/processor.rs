@@ -27,7 +27,10 @@ impl Processor {
         let instruction = WPoktInstruction::try_from_slice(instruction_data)
             .map_err(|_| ProgramError::InvalidInstructionData)?;
         match instruction {
-            WPoktInstruction::Construct => constructor(program_id, accounts),
+            WPoktInstruction::Construct => {
+                msg!("WPokt::Instruction::Construct");
+                constructor(program_id, accounts)
+            },
             WPoktInstruction::SetBridgeOnlyOwner { bridge_address } => {
                 set_bridge(program_id, accounts, bridge_address)
             }
@@ -48,13 +51,10 @@ fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult
     let mint_account = next_account_info(account_info_iter)?;
     let system_account = next_account_info(account_info_iter)?;
     let token_program_account = next_account_info(account_info_iter)?;
+    let rent_sysvar_account = next_account_info(account_info_iter)?;
 
     if !owner.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
-    }
-
-    if *token_program_account.key != spl_token::id() {
-        return Err(ProgramError::InvalidInstructionData);
     }
 
     if !mint_account.is_writable {
@@ -68,10 +68,8 @@ fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult
     if *wpokt_account.key != _pda {
         return Err(ProgramError::InvalidAccountData);
     }
-    msg!("PDA created and WPokt address verified.");
 
-    let rent_sysvar = Rent::get()?;
-    msg!("Rent sysvar created.");
+    let rent_sysvar = Rent::from_account_info(rent_sysvar_account)?;
     // create PDA account
     let create_pda_acc_ix = system_instruction::create_account(
         owner.key,
@@ -80,7 +78,6 @@ fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult
         WPokt::LEN.try_into().unwrap(),
         _program_id,
     );
-    msg!("PDA account init instruction created.");
 
     program::invoke_signed(
         &create_pda_acc_ix,
@@ -88,29 +85,28 @@ fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult
         &[&[mint_account.key.as_ref(), b"WPokt", &[_nonce]]],
     )?;
 
-    let mut wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
-    wpokt_data.owner = *owner.key;
-    wpokt_data.bridge_address = Pubkey::new(&[0_u8; 32]);
-    wpokt_data.is_initialized = true;
-    wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
-
-    let init_mint_ix = spl_token::instruction::initialize_mint2(
+    // let mut rent_sysvar_account = AccountInfo::
+    let init_mint_ix = spl_token::instruction::initialize_mint(
         &spl_token::id(),
         mint_account.key,
         wpokt_account.key,
         None,
-        9,
+        0,
     )?;
 
-    msg!(
-        "WPokt: CPI SPL-Token InitializeMint2 at {}",
-        spl_token::id()
-    );
-    // FIXME returns 'Program log: Error: Invalid instruction',
-    // program::invoke(
-    //     &init_mint_ix,
-    //     &[mint_account.clone(), token_program_account.clone()],
-    // )?;
+    program::invoke(
+        &init_mint_ix,
+        &[mint_account.clone(), rent_sysvar_account.clone(), token_program_account.clone()],
+    )?;
+
+    let mut wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
+    wpokt_data.owner = *owner.key;
+    wpokt_data.bridge_address = Pubkey::new(&[0_u8; 32]);
+    wpokt_data.is_initialized = true;
+    wpokt_data.mint = *mint_account.key;
+    wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
+    
+    msg!("WPokt: Construction successful");
     Ok(())
 }
 

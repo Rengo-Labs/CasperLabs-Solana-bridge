@@ -35,10 +35,12 @@ const wPoktTests = async (
     `TSX - wPoktTests(): ${W_POKT_LIB_NAME} deployed at ${wPoktProgramId}...`
   );
 
+  const wPoktMintAccount = Keypair.generate();
   // create WPokt accounts
-  const wPoktMintAccount = await WPokt.createOrInitializeAccounts(
+   await WPokt.createOrInitializeAccounts(
     connection,
     payer,
+    wPoktMintAccount,
     wPoktProgramId
   );
   console.log(
@@ -53,7 +55,7 @@ const wPoktTests = async (
     `TSX - wPoktTests(): ${W_POKT_LIB_NAME} PDA Key Created at ${wPoktPdaAccount}...`
   );
 
-  await WPokt.verifyAccountsCreationAndInitialState(
+  await WPokt.verifyCreateOrInitializeAccounts(
     connection,
     wPoktProgramId,
     payer,
@@ -64,6 +66,16 @@ const wPoktTests = async (
     `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Accounts creation and initial state verified...`
   );
 
+  // construct WPokt
+  await WPokt.construct(connection, payer, wPoktMintAccount, wPoktProgramId);
+  console.log(
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Constructed...`
+  );
+
+  await WPokt.verifyConstruction(connection, wPoktProgramId, payer, wPoktPdaAccount, wPoktMintAccount);
+  console.log(
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Accounts Post-Construction state verified...`
+  );
   return [wPoktProgramId, wPoktMintAccount, wPoktPdaAccount];
 };
 
@@ -78,6 +90,8 @@ async function main() {
   console.log(`TSX - main(): Established Payer at ${payer.publicKey}`);
 
   const [wPoktProgramId, wPoktMintAccount, wPoktPdaAccount] = await wPoktTests(connection, payer);
+
+  console.log(`TSX - main(): Finished...`);
 }
 
 main().then(

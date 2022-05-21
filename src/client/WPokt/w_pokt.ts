@@ -9,10 +9,12 @@ import {
   TransactionInstruction,
   Transaction,
   sendAndConfirmTransaction,
+  SYSVAR_RENT_PUBKEY,
 } from "@solana/web3.js";
 import * as splToken from "@solana/spl-token";
 import { WPoktInstruction } from "./instructions";
-import {WPoktLayout} from "./state";
+import * as WPoktState from "./state";
+import { isWeakMap } from "util/types";
 
 // returns the WPokt PDA
 export const wPoktPdaKeypair = async (
@@ -37,10 +39,9 @@ export const wPoktPdaKeypair = async (
 export const createOrInitializeAccounts = async (
   connection: Connection,
   payer: Keypair,
+  mint: Keypair,
   programId: PublicKey
-): Promise<Keypair> => {
-  const mint = Keypair.generate();
-
+): Promise<string> => {
   const createMintAccountIx = SystemProgram.createAccount({
     programId: splToken.TOKEN_PROGRAM_ID,
     space: splToken.MintLayout.span,
@@ -54,9 +55,7 @@ export const createOrInitializeAccounts = async (
   const tx = new Transaction();
   tx.add(createMintAccountIx);
 
-  await sendAndConfirmTransaction(connection, tx, [payer, mint]);
-
-  return mint;
+  return await sendAndConfirmTransaction(connection, tx, [payer, mint]);
 };
 
 export const construct = async (
@@ -64,7 +63,7 @@ export const construct = async (
   payer: Keypair,
   mintAccount: Keypair,
   programId: PublicKey
-) => {
+): Promise<string> => {
   const [pda_account, seedBump] = await wPoktPdaKeypair(
     mintAccount.publicKey,
     programId
@@ -79,13 +78,13 @@ export const construct = async (
       { pubkey: mintAccount.publicKey, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
     ],
     data: Buffer.from(Uint8Array.of(WPoktInstruction.Construct)),
   });
 
   const tx = new Transaction().add(ix);
-
-  await sendAndConfirmTransaction(connection, tx, [payer]);
+  return await sendAndConfirmTransaction(connection, tx, [payer]);
 };
 
 /**
@@ -96,7 +95,7 @@ export const construct = async (
  * @param w_pokt the WPokt PDA account
  * @param mint the WPokt Mint account
  */
-export const verifyAccountsCreationAndInitialState = async (
+export const verifyCreateOrInitializeAccounts = async (
   connection: Connection,
   programId: PublicKey,
   owner: Keypair,
@@ -109,18 +108,124 @@ export const verifyAccountsCreationAndInitialState = async (
 
   // || owner_acc.data.length === 0
   if (ownerAcc === null || ownerAcc.data.length !== 0) {
-    console.log(`TSX: verifyWPoktAccountsCreation(): WPokt Owner account not found or has data at ${owner}`);
+    console.log(
+      `TSX: verifyWPoktAccountsCreation(): WPokt Owner account not found or has data at ${owner}`
+    );
     process.exit(1);
   }
 
   // check for PDA account non-existance as it's created on-chain
   if (wPoktAcc !== null) {
-    console.log(`TSX: verifyWPoktAccountsCreation(): WPokt PDA already in use at ${w_pokt}`);
+    console.log(
+      `TSX: verifyWPoktAccountsCreation(): WPokt PDA already in use at ${w_pokt}`
+    );
     process.exit(1);
   }
 
   if (mintAcc === null || mintAcc.data.length === 0) {
-    console.log(`TSX: verifyWPoktAccountsCreation(): WPokt Mint account not found at ${mint}`);
+    console.log(
+      `TSX: verifyWPoktAccountsCreation(): WPokt Mint account not found at ${mint}`
+    );
     process.exit(1);
   }
-}
+};
+
+export const verifyWpoktPda = async (
+  programId: PublicKey,
+  owner: PublicKey,
+  mint: PublicKey,
+  wPokt: WPoktState.WPoktLayout
+) => {
+  if (wPokt.isInitialized == false) {
+    throw Error(
+      `TSX verifyWpoktPdaDataConstruction(): WPokt PDA Account Uninitialized`
+    );
+  }
+  if (!owner.equals(wPokt.owner)) {
+    throw Error(
+      `TSX verifyWpoktPdaDataConstruction(): WPokt PDA Account Owner Uninitialized`
+    );
+  }
+  if (!mint.equals(wPokt.mint)) {
+    throw Error(
+      `TSX verifyWpoktPdaDataConstruction(): WPokt PDA Account Mint Uninitialized`
+    );
+  }
+  if (!wPokt.bridgeAddress.equals(PublicKey.default)) {
+    throw Error(
+      `TSX verifyWpoktPdaDataConstruction(): WPokt PDA Account BridgeAddress Improper Initialization`
+    );
+  }
+};
+
+export const verifyMint = async (
+  wPoktMint: splToken.Mint,
+  initializationStatus: boolean,
+  mint_authority: PublicKey,
+  decimals: number,
+  freeze_authority?: PublicKey
+) => {
+  if (wPoktMint.isInitialized !== initializationStatus) {
+    throw Error(
+      `TSX: verifyMint: WPokt Mint.isInitialized is ${!initializationStatus}`
+    );
+  }
+  if (!wPoktMint.mintAuthority?.equals(mint_authority)) {
+    throw Error(
+      `TSX: verifyMint:  WPokt Invalid Mint.mintAuthority is ${wPoktMint.mintAuthority?.toBase58()}`
+    );
+  }
+  if (wPoktMint.decimals !== decimals) {
+    throw Error(
+      `TSX: verifyMint:  WPokt Incorrect Mint.decimals is ${wPoktMint.decimals}`
+    );
+  }
+
+  if (freeze_authority !== undefined) {
+    if (!wPoktMint.freezeAuthority?.equals(freeze_authority)) {
+      throw Error(
+        `TSX: verifyMint:  WPokt Invalid Mint.freezeAuthority is ${wPoktMint.freezeAuthority?.toBase58()}`
+      );
+    }
+  }
+};
+
+export const verifyConstruction = async (
+  connection: Connection,
+  programId: PublicKey,
+  owner: Keypair,
+  w_pokt: PublicKey, // doesn't yet exist, as its created on chain by Construct instruction
+  mint: Keypair
+) => {
+  // get and verify WPokt PDA account
+  let wPoktAcc = await connection.getAccountInfo(w_pokt);
+  // check for PDA account non-existance as it's created on-chain
+  if (wPoktAcc === null) {
+    console.log(
+      `TSX: verifyWpoktConstruction(): WPokt PDA account not found ${w_pokt}`
+    );
+    process.exit(1);
+  }
+
+  // decode account
+  const wPoktAccData = WPoktState.W_POKT_ACCOUNT_DATA_LAYOUT.decode(
+    Buffer.from(wPoktAcc.data)
+  );
+
+  await verifyWpoktPda(
+    programId,
+    owner.publicKey,
+    mint.publicKey,
+    wPoktAccData
+  );
+
+  // get and decode mint
+  const wPoktMintData = await splToken.getMint(
+    connection,
+    mint.publicKey,
+    "confirmed",
+    splToken.TOKEN_PROGRAM_ID
+  );
+
+  await verifyMint(wPoktMintData, true, w_pokt, 0);
+};

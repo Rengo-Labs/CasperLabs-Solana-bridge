@@ -7,6 +7,9 @@ pub enum WPoktInstruction {
     /// 0. `[signer]` The account of person deploying WPokt - the 'owner'.
     /// 1. `[writable]` The account used as WPokt's global state
     /// 2. `[]` the Mint account created by 'owner'.
+    /// 3. `[]` The System Account
+    /// 4. `[]` The SPL Token Account
+    /// 6. `[]` The Rent Sysvar Account
     Construct,
     /// 0. `[signer]` The account of person deploying WPokt - the 'owner'.
     SetBridgeOnlyOwner { bridge_address: Pubkey },
