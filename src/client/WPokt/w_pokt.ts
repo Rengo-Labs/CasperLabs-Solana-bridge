@@ -115,6 +115,31 @@ export const setBridge = async (
   return await sendAndConfirmTransaction(connection, tx, [owner]);
 };
 
+export const mint = async (
+  connection: Connection,
+  programId: PublicKey,
+  pdaAccount: PublicKey,
+  mint: PublicKey,
+  bridgeAccount: Keypair,
+  receiverAccount: Keypair
+): Promise<string> => {
+  const data = Buffer.concat([
+    Buffer.from(Uint8Array.of(WPoktInstruction.SetBridgeOnlyOwner)),
+    Buffer.from(Uint8Array.of(100)),
+  ]);
+
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: pdaAccount, isSigner: false, isWritable: false },
+      { pubkey: bridgeAccount.publicKey, isSigner: true, isWritable: false },
+      { pubkey: mint, isSigner: false, isWritable: true },
+      { pubkey: receiverAccount.publicKey, isSigner: false, isWritable: true },
+    ],
+  });
+  const tx = new Transaction().add(ix);
+  return await sendAndConfirmTransaction(connection, tx, [bridgeAccount]);
+};
 /**
  * Verifies all required accounts were created and have the correct initial states
  * @param connection the rpc connection instance

@@ -30,7 +30,7 @@ impl Processor {
             WPoktInstruction::Construct => {
                 msg!("WPokt::Instruction::Construct");
                 constructor(program_id, accounts)
-            },
+            }
             WPoktInstruction::SetBridgeOnlyOwner { bridge_address } => {
                 msg!("WPokt::Instruction::SetBridgeOnlyOwner");
                 set_bridge(program_id, accounts, bridge_address)
@@ -97,7 +97,11 @@ fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult
 
     program::invoke(
         &init_mint_ix,
-        &[mint_account.clone(), rent_sysvar_account.clone(), token_program_account.clone()],
+        &[
+            mint_account.clone(),
+            rent_sysvar_account.clone(),
+            token_program_account.clone(),
+        ],
     )?;
 
     let mut wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
@@ -106,7 +110,7 @@ fn constructor(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult
     wpokt_data.is_initialized = true;
     wpokt_data.mint = *mint_account.key;
     wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
-    
+
     msg!("WPokt: Construction successful");
     Ok(())
 }
@@ -151,47 +155,47 @@ fn set_bridge(
 }
 
 fn mint(_program_id: &Pubkey, _accounts: &[AccountInfo], _amount: u64) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let _owner_account = next_account_info(account_info_iter)?;
-    // let wpokt_account = next_account_info(account_info_iter)?;
-    // if wpokt_account.owner != _program_id {
-    //     return Err(ProgramError::IncorrectProgramId);
-    // }
-    // let wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
-    // if !wpokt_data.is_initialized {
-    //     return Err(ProgramError::UninitializedAccount);
-    // }
-    // // onlyBridge
-    // let bridge_account = next_account_info(account_info_iter)?;
-    // if !bridge_account.is_signer || wpokt_data.bridge_address != *bridge_account.key {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    let account_info_iter = &mut _accounts.iter();
+    let wpokt_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?; // the bridge PDA account
+    let mint_account = next_account_info(account_info_iter)?; // WPokt PDA account
+    let receiver_account = next_account_info(account_info_iter)?; // the token account to mint to
 
-    // let mint_account = next_account_info(account_info_iter)?;
-    // let receiver_account = next_account_info(account_info_iter)?;
-    // let pda_account = next_account_info(account_info_iter)?;
+    if wpokt_account.owner != _program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
+    if !wpokt_data.is_initialized {
+        return Err(ProgramError::UninitializedAccount);
+    }
 
-    // let seeds = format!("{}WPokt", *wpokt_account.key);
-    // let (pda, nonce) = Pubkey::find_program_address(&[seeds.as_bytes()], _program_id);
-    // // // mint instruction
-    // let mint_ix = spl_token_2022::instruction::mint_to(
-    //     &spl_token_2022::id(),
-    //     mint_account.key,
-    //     receiver_account.key,
-    //     &pda,
-    //     &[&pda],
-    //     _amount,
-    // )?;
+    // onlyBridge
+    if !bridge_account.is_signer || wpokt_data.bridge_address != *bridge_account.key {
+        return Err(ProgramError::Custom(WPoktError::InvalidCaller as u32));
+    }
 
-    // program::invoke_signed(
-    //     &mint_ix,
-    //     &[
-    //         mint_account.clone(),
-    //         receiver_account.clone(),
-    //         pda_account.clone(),
-    //     ],
-    //     &[&[seeds.as_bytes(), &[nonce]]],
-    // )?;
+    let (pda, nonce) =
+        Pubkey::find_program_address(&[mint_account.key.as_ref(), b"WPokt"], _program_id);
+
+    // // mint instruction
+    let mint_ix = spl_token::instruction::mint_to(
+        &spl_token_2022::id(),
+        mint_account.key,
+        receiver_account.key,
+        &pda,
+        &[&pda],
+        _amount,
+    )?;
+
+    program::invoke_signed(
+        &mint_ix,
+        &[
+            mint_account.clone(),
+            receiver_account.clone(),
+            wpokt_account.clone(),
+        ],
+        &[&[mint_account.key.as_ref(), b"WPokt", &[nonce]]],
+    )?;
     Ok(())
 }
 

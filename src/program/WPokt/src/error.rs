@@ -12,6 +12,8 @@ pub enum WPoktError {
     AccountNotOwnedByWPokt,
     #[error("Already set.")]
     AlreadySet,
+    #[error("Invalid Caller.")]
+    InvalidCaller,
 }
 
 impl From<WPoktError> for ProgramError {
