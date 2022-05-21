@@ -32,6 +32,7 @@ impl Processor {
                 constructor(program_id, accounts)
             },
             WPoktInstruction::SetBridgeOnlyOwner { bridge_address } => {
+                msg!("WPokt::Instruction::SetBridgeOnlyOwner");
                 set_bridge(program_id, accounts, bridge_address)
             }
             WPoktInstruction::MintOnlyBridge { amount } => mint(program_id, accounts, amount),
@@ -116,18 +117,19 @@ fn set_bridge(
     _bridge_address: Pubkey,
 ) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
-
     let owner = next_account_info(account_info_iter)?;
+    let wpokt_account = next_account_info(account_info_iter)?;
+
     if !owner.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let wpokt_account = next_account_info(account_info_iter)?;
-    if wpokt_account.owner != _program_id {
+    if *wpokt_account.owner != *_program_id {
         return Err(ProgramError::Custom(
             WPoktError::AccountNotOwnedByWPokt as u32,
         ));
     }
+
     let mut wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
     if !wpokt_data.is_initialized {
         return Err(ProgramError::UninitializedAccount);

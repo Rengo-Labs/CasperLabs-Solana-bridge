@@ -12,6 +12,7 @@ pub enum WPoktInstruction {
     /// 6. `[]` The Rent Sysvar Account
     Construct,
     /// 0. `[signer]` The account of person deploying WPokt - the 'owner'.
+    /// 1. `[writable]` The account used as WPokt's global state
     SetBridgeOnlyOwner { bridge_address: Pubkey },
     /// Accounts expected:
     /// 0. `[]` The program owner's account.

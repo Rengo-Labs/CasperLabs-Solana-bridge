@@ -1,5 +1,5 @@
 import * as WPokt from "./WPokt/w_pokt";
-import { PublicKey, Keypair, Connection } from "@solana/web3.js";
+import { PublicKey, Keypair, Connection, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { AccountLayout } from "@solana/spl-token";
 import {
   establishConnection,
@@ -37,7 +37,7 @@ const wPoktTests = async (
 
   const wPoktMintAccount = Keypair.generate();
   // create WPokt accounts
-   await WPokt.createOrInitializeAccounts(
+  await WPokt.createOrInitializeAccounts(
     connection,
     payer,
     wPoktMintAccount,
@@ -68,14 +68,39 @@ const wPoktTests = async (
 
   // construct WPokt
   await WPokt.construct(connection, payer, wPoktMintAccount, wPoktProgramId);
-  console.log(
-    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Constructed...`
-  );
+  console.log(`TSX - wPoktTests(): ${W_POKT_LIB_NAME} Constructed...`);
 
-  await WPokt.verifyConstruction(connection, wPoktProgramId, payer, wPoktPdaAccount, wPoktMintAccount);
+  await WPokt.verifyConstruction(
+    connection,
+    wPoktProgramId,
+    payer,
+    wPoktPdaAccount,
+    wPoktMintAccount
+  );
   console.log(
     `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Accounts Post-Construction state verified...`
   );
+
+  const bridgeAddress = Keypair.generate();
+  await connection.requestAirdrop(bridgeAddress.publicKey, LAMPORTS_PER_SOL * 100);
+
+  // setBridge
+  await WPokt.setBridge(
+    connection,
+    wPoktProgramId,
+    payer,
+    wPoktPdaAccount,
+    bridgeAddress.publicKey
+  );
+  console.log(
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} WPokt Bridge Address set to ${bridgeAddress.publicKey.toBase58()}...`
+  );
+  // verify WPokt Bridge Address
+  await WPokt.VerifyWPoktBridgeAddress(connection, wPoktPdaAccount, bridgeAddress.publicKey);
+  console.log(
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} WPokt Bridge Address Verified...`
+  );
+  
   return [wPoktProgramId, wPoktMintAccount, wPoktPdaAccount];
 };
 
@@ -89,7 +114,10 @@ async function main() {
   const payer: Keypair = await establishPayer(connection);
   console.log(`TSX - main(): Established Payer at ${payer.publicKey}`);
 
-  const [wPoktProgramId, wPoktMintAccount, wPoktPdaAccount] = await wPoktTests(connection, payer);
+  const [wPoktProgramId, wPoktMintAccount, wPoktPdaAccount] = await wPoktTests(
+    connection,
+    payer
+  );
 
   console.log(`TSX - main(): Finished...`);
 }

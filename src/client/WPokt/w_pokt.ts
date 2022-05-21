@@ -15,6 +15,9 @@ import * as splToken from "@solana/spl-token";
 import { WPoktInstruction } from "./instructions";
 import * as WPoktState from "./state";
 import { isWeakMap } from "util/types";
+import * as BufferLayout from "@solana/buffer-layout";
+import * as BufferLayoutUtils from "@solana/buffer-layout-utils";
+import { publicKey } from "@solana/buffer-layout-utils";
 
 // returns the WPokt PDA
 export const wPoktPdaKeypair = async (
@@ -85,6 +88,31 @@ export const construct = async (
 
   const tx = new Transaction().add(ix);
   return await sendAndConfirmTransaction(connection, tx, [payer]);
+};
+
+export const setBridge = async (
+  connection: Connection,
+  programId: PublicKey,
+  owner: Keypair,
+  wPoktPda: PublicKey,
+  bridgePubkey: PublicKey
+): Promise<string> => {
+  // const buffers = ;
+  const data = Buffer.concat([
+    Buffer.from(Uint8Array.of(WPoktInstruction.SetBridgeOnlyOwner)),
+    bridgePubkey.toBuffer(),
+  ]);
+  //  buffers.concat(wPoktPda.toBuffer());
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: owner.publicKey, isSigner: true, isWritable: true },
+      { pubkey: wPoktPda, isSigner: false, isWritable: true },
+    ],
+    data,
+  });
+  const tx = new Transaction().add(ix);
+  return await sendAndConfirmTransaction(connection, tx, [owner]);
 };
 
 /**
@@ -228,4 +256,33 @@ export const verifyConstruction = async (
   );
 
   await verifyMint(wPoktMintData, true, w_pokt, 0);
+};
+
+export const VerifyWPoktBridgeAddress = async (
+  connection: Connection,
+  wPoktPda: PublicKey,
+  bridge: PublicKey
+) => {
+  // query bridge PDA account
+  const pdaAccount = await connection.getAccountInfo(wPoktPda);
+
+  if (pdaAccount === null) {
+    console.log(
+      `TSX: constVerifyWPoktBridgeAddress(): WPokt PDA account not found ${wPoktPda}`
+    );
+    process.exit(1);
+  }
+
+  // decode account
+  const pdaAccountData = WPoktState.W_POKT_ACCOUNT_DATA_LAYOUT.decode(
+    Buffer.from(pdaAccount.data)
+  );
+
+  // verify bridge address
+  if (!pdaAccountData.bridgeAddress.equals(bridge)) {
+    console.log(
+      `TSX: constVerifyWPoktBridgeAddress(): WPokt PDA Bridge Address is ${pdaAccountData.bridgeAddress.toBase58()}`
+    );
+    process.exit(1);
+  }
 };
