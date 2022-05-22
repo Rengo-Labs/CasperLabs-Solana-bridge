@@ -35,7 +35,10 @@ impl Processor {
                 msg!("WPokt::Instruction::SetBridgeOnlyOwner");
                 set_bridge(program_id, accounts, bridge_address)
             }
-            WPoktInstruction::MintOnlyBridge { amount } => mint(program_id, accounts, amount),
+            WPoktInstruction::MintOnlyBridge { amount } => {
+                msg!("WPokt::Instruction::MintOnlyBridge");
+                mint(program_id, accounts, amount)
+            }
             WPoktInstruction::Burn { amount } => burn(program_id, accounts, amount),
             WPoktInstruction::RenounceOwnership => renounce_ownership(program_id, accounts),
             WPoktInstruction::TransferOwnership { new_owner } => {
@@ -160,8 +163,9 @@ fn mint(_program_id: &Pubkey, _accounts: &[AccountInfo], _amount: u64) -> Progra
     let bridge_account = next_account_info(account_info_iter)?; // the bridge PDA account
     let mint_account = next_account_info(account_info_iter)?; // WPokt PDA account
     let receiver_account = next_account_info(account_info_iter)?; // the token account to mint to
+    let token_program_account = next_account_info(account_info_iter)?; // the token account to mint to
 
-    if wpokt_account.owner != _program_id {
+    if *wpokt_account.owner != *_program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
     let wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
@@ -179,7 +183,7 @@ fn mint(_program_id: &Pubkey, _accounts: &[AccountInfo], _amount: u64) -> Progra
 
     // // mint instruction
     let mint_ix = spl_token::instruction::mint_to(
-        &spl_token_2022::id(),
+        &spl_token::id(),
         mint_account.key,
         receiver_account.key,
         &pda,
@@ -193,6 +197,7 @@ fn mint(_program_id: &Pubkey, _accounts: &[AccountInfo], _amount: u64) -> Progra
             mint_account.clone(),
             receiver_account.clone(),
             wpokt_account.clone(),
+            token_program_account.clone(),
         ],
         &[&[mint_account.key.as_ref(), b"WPokt", &[nonce]]],
     )?;

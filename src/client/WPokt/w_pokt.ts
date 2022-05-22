@@ -17,7 +17,9 @@ import * as WPoktState from "./state";
 import { isWeakMap } from "util/types";
 import * as BufferLayout from "@solana/buffer-layout";
 import * as BufferLayoutUtils from "@solana/buffer-layout-utils";
-import { publicKey } from "@solana/buffer-layout-utils";
+import { bigInt, publicKey } from "@solana/buffer-layout-utils";
+import { BN } from "bn.js";
+import { assert } from "console";
 
 // returns the WPokt PDA
 export const wPoktPdaKeypair = async (
@@ -64,13 +66,10 @@ export const createOrInitializeAccounts = async (
 export const construct = async (
   connection: Connection,
   payer: Keypair,
-  mintAccount: Keypair,
+  mintAccount: PublicKey,
   programId: PublicKey
 ): Promise<string> => {
-  const [pda_account, seedBump] = await wPoktPdaKeypair(
-    mintAccount.publicKey,
-    programId
-  );
+  const [pda_account, seedBump] = await wPoktPdaKeypair(mintAccount, programId);
 
   // create WPokt constructor instruction
   const ix = new TransactionInstruction({
@@ -78,7 +77,7 @@ export const construct = async (
     keys: [
       { pubkey: payer.publicKey, isSigner: true, isWritable: true },
       { pubkey: pda_account, isSigner: false, isWritable: true },
-      { pubkey: mintAccount.publicKey, isSigner: false, isWritable: true },
+      { pubkey: mintAccount, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
@@ -115,18 +114,34 @@ export const setBridge = async (
   return await sendAndConfirmTransaction(connection, tx, [owner]);
 };
 
+interface MintInstruction {
+  instruction: number;
+  amount: number;
+}
+
 export const mint = async (
   connection: Connection,
   programId: PublicKey,
   pdaAccount: PublicKey,
   mint: PublicKey,
   bridgeAccount: Keypair,
-  receiverAccount: Keypair
-): Promise<string> => {
-  const data = Buffer.concat([
-    Buffer.from(Uint8Array.of(WPoktInstruction.SetBridgeOnlyOwner)),
-    Buffer.from(Uint8Array.of(100)),
-  ]);
+  receiverAccount: PublicKey,
+  amount: number
+) => {
+  let data = Buffer.alloc(9); // 1B Instruction, 9B amount
+  const instructionDataLayout: BufferLayout.Layout<MintInstruction> =
+    BufferLayout.struct([
+      BufferLayout.u8("instruction"),
+      BufferLayout.nu64("amount"),
+    ]);
+
+  const instructionDataLength = instructionDataLayout.encode(
+    {
+      instruction: WPoktInstruction.MintOnlyBridge,
+      amount,
+    },
+    data
+  );
 
   const ix = new TransactionInstruction({
     programId,
@@ -134,12 +149,19 @@ export const mint = async (
       { pubkey: pdaAccount, isSigner: false, isWritable: false },
       { pubkey: bridgeAccount.publicKey, isSigner: true, isWritable: false },
       { pubkey: mint, isSigner: false, isWritable: true },
-      { pubkey: receiverAccount.publicKey, isSigner: false, isWritable: true },
+      { pubkey: receiverAccount, isSigner: false, isWritable: true },
+      { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
+    data,
   });
   const tx = new Transaction().add(ix);
   return await sendAndConfirmTransaction(connection, tx, [bridgeAccount]);
 };
+
+// export const verifyMintInstruction = async (connection: Connection, tokenAccount: PublicKey, balance: number)=>{
+//     // get bridge token account, and check its balance
+
+// }
 /**
  * Verifies all required accounts were created and have the correct initial states
  * @param connection the rpc connection instance
@@ -151,13 +173,13 @@ export const mint = async (
 export const verifyCreateOrInitializeAccounts = async (
   connection: Connection,
   programId: PublicKey,
-  owner: Keypair,
+  owner: PublicKey,
   w_pokt: PublicKey, // doesn't yet exist, as its created on chain by Construct instruction
-  mint: Keypair
+  mint: PublicKey
 ) => {
-  let ownerAcc = await connection.getAccountInfo(owner.publicKey);
+  let ownerAcc = await connection.getAccountInfo(owner);
   let wPoktAcc = await connection.getAccountInfo(w_pokt);
-  let mintAcc = await connection.getAccountInfo(mint.publicKey);
+  let mintAcc = await connection.getAccountInfo(mint);
 
   // || owner_acc.data.length === 0
   if (ownerAcc === null || ownerAcc.data.length !== 0) {
@@ -246,9 +268,9 @@ export const verifyMint = async (
 export const verifyConstruction = async (
   connection: Connection,
   programId: PublicKey,
-  owner: Keypair,
+  owner: PublicKey,
   w_pokt: PublicKey, // doesn't yet exist, as its created on chain by Construct instruction
-  mint: Keypair
+  mint: PublicKey
 ) => {
   // get and verify WPokt PDA account
   let wPoktAcc = await connection.getAccountInfo(w_pokt);
@@ -265,17 +287,12 @@ export const verifyConstruction = async (
     Buffer.from(wPoktAcc.data)
   );
 
-  await verifyWpoktPda(
-    programId,
-    owner.publicKey,
-    mint.publicKey,
-    wPoktAccData
-  );
+  await verifyWpoktPda(programId, owner, mint, wPoktAccData);
 
   // get and decode mint
   const wPoktMintData = await splToken.getMint(
     connection,
-    mint.publicKey,
+    mint,
     "confirmed",
     splToken.TOKEN_PROGRAM_ID
   );

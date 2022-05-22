@@ -1,12 +1,21 @@
 import * as WPokt from "./WPokt/w_pokt";
-import { PublicKey, Keypair, Connection, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import {
+  PublicKey,
+  Keypair,
+  Connection,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js";
 import { AccountLayout } from "@solana/spl-token";
+import * as SplToken from "@solana/spl-token";
+
 import {
   establishConnection,
   establishPayer,
   checkOrDeployProgram,
 } from "./utils";
 import path from "path";
+import { assert } from "console";
+import { bigInt } from "@solana/buffer-layout-utils";
 
 // import { W_POKT_ACCOUNT_DATA_LAYOUT } from "./state";
 // import { WPoktInstruction } from "./WPokt/instructions";
@@ -26,82 +35,138 @@ const wPoktTests = async (
   payer: Keypair
 ): Promise<[PublicKey, Keypair, PublicKey]> => {
   //deploy WPokt program
-  const wPoktProgramId: PublicKey = await checkOrDeployProgram(
+  const programId: PublicKey = await checkOrDeployProgram(
     connection,
     PROGRAM_PATH,
     W_POKT_LIB_NAME
   );
   console.log(
-    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} deployed at ${wPoktProgramId}...`
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} deployed at ${programId}...`
   );
 
-  const wPoktMintAccount = Keypair.generate();
+  const mintAccount = Keypair.generate();
   // create WPokt accounts
   await WPokt.createOrInitializeAccounts(
     connection,
     payer,
-    wPoktMintAccount,
-    wPoktProgramId
+    mintAccount,
+    programId
   );
   console.log(
-    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Mint Account Created at ${wPoktMintAccount.publicKey}...`
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Mint Account Created at ${mintAccount.publicKey}...`
   );
 
-  const [wPoktPdaAccount, bumpSeed] = await WPokt.wPoktPdaKeypair(
-    wPoktMintAccount.publicKey,
-    wPoktProgramId
+  const [pdaAccount, bumpSeed] = await WPokt.wPoktPdaKeypair(
+    mintAccount.publicKey,
+    programId
   );
   console.log(
-    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} PDA Key Created at ${wPoktPdaAccount}...`
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} PDA Key Created at ${pdaAccount}...`
   );
 
   await WPokt.verifyCreateOrInitializeAccounts(
     connection,
-    wPoktProgramId,
-    payer,
-    wPoktPdaAccount,
-    wPoktMintAccount
+    programId,
+    payer.publicKey,
+    pdaAccount,
+    mintAccount.publicKey
   );
   console.log(
     `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Accounts creation and initial state verified...`
   );
 
   // construct WPokt
-  await WPokt.construct(connection, payer, wPoktMintAccount, wPoktProgramId);
+  await WPokt.construct(connection, payer, mintAccount.publicKey, programId);
   console.log(`TSX - wPoktTests(): ${W_POKT_LIB_NAME} Constructed...`);
 
   await WPokt.verifyConstruction(
     connection,
-    wPoktProgramId,
-    payer,
-    wPoktPdaAccount,
-    wPoktMintAccount
+    programId,
+    payer.publicKey,
+    pdaAccount,
+    mintAccount.publicKey
   );
   console.log(
     `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Accounts Post-Construction state verified...`
   );
 
   const bridgeAddress = Keypair.generate();
-  await connection.requestAirdrop(bridgeAddress.publicKey, LAMPORTS_PER_SOL * 100);
+  await connection.requestAirdrop(
+    bridgeAddress.publicKey,
+    LAMPORTS_PER_SOL * 100
+  );
 
   // setBridge
   await WPokt.setBridge(
     connection,
-    wPoktProgramId,
+    programId,
     payer,
-    wPoktPdaAccount,
+    pdaAccount,
     bridgeAddress.publicKey
   );
   console.log(
     `TSX - wPoktTests(): ${W_POKT_LIB_NAME} WPokt Bridge Address set to ${bridgeAddress.publicKey.toBase58()}...`
   );
+
   // verify WPokt Bridge Address
-  await WPokt.VerifyWPoktBridgeAddress(connection, wPoktPdaAccount, bridgeAddress.publicKey);
+  await WPokt.VerifyWPoktBridgeAddress(
+    connection,
+    pdaAccount,
+    bridgeAddress.publicKey
+  );
   console.log(
     `TSX - wPoktTests(): ${W_POKT_LIB_NAME} WPokt Bridge Address Verified...`
   );
-  
-  return [wPoktProgramId, wPoktMintAccount, wPoktPdaAccount];
+
+  // create a token account
+  const bridgeTokenAccount = await SplToken.createAccount(
+    connection,
+    payer,
+    mintAccount.publicKey,
+    bridgeAddress.publicKey
+  );
+  console.log(
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Bridge Token Account Created and Initialized...`
+  );
+
+  // verify account creation
+  let bridgeTokenAccountInfo = await SplToken.getAccount(
+    connection,
+    bridgeTokenAccount
+  );
+
+  assert(
+    bridgeTokenAccountInfo.amount === BigInt(0),
+    "bridgeTokenAccountInfo.amount !== 0"
+  );
+  assert(
+    bridgeTokenAccountInfo.owner.equals(bridgeAddress.publicKey),
+    "bridgeTokenAccountInfo.owner != bridgeAddress"
+  );
+  console.log(
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Bridge Token Account Creation and Initialization Verified...`
+  );
+
+  const amount = 1;
+  // Mint instruction
+  await WPokt.mint(
+    connection,
+    programId,
+    pdaAccount,
+    mintAccount.publicKey,
+    bridgeAddress,
+    bridgeTokenAccount,
+    amount
+  );
+
+  // bridgeTokenAccountInfo = await SplToken.getAccount(
+  //   connection,
+  //   bridgeTokenAccount
+  // );
+  // assert(bridgeTokenAccountInfo.amount===BigInt(amount), `bridgeTokenAccountInfo.amount !== ${amount}`);
+  // assert(bridgeTokenAccountInfo.owner.equals(bridgeAddress.publicKey), "bridgeTokenAccountInfo.owner != bridgeAddress");
+
+  return [programId, mintAccount, pdaAccount];
 };
 
 async function main() {
