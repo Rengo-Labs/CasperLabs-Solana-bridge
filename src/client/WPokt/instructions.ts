@@ -1,3 +1,5 @@
+import * as BufferLayout from "@solana/buffer-layout";
+
 /** Instructions defined by the program */
 export enum WPoktInstruction {
   /// Accounts expected:
@@ -30,3 +32,14 @@ export enum WPoktInstruction {
   /// 1. `[writeable]` The account used as WPokt's global state
   TransferOwnership = 5,
 }
+
+export interface MintOnlyBridge {
+  instruction: number;
+  amount: number;
+}
+
+export const W_POKT_MINT_INSTRUCTION_LAYOUT: BufferLayout.Layout<MintOnlyBridge> =
+BufferLayout.struct([
+  BufferLayout.u8("instruction"),
+  BufferLayout.nu64("amount"),
+]);

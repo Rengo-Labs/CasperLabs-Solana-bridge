@@ -8,6 +8,7 @@ import path from "path";
 import yaml from "yaml";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { Connection } from "@solana/web3.js";
+import {Mint} from "@solana/spl-token";
 
 // import * as buffer from "buffer";
 /**
@@ -138,3 +139,44 @@ export const checkOrDeployProgram = async (connection: Connection, programPath: 
   // console.log(`Using program ${programId.toBase58()}`);
   return programId;
 }
+
+export const verifyMint = async (
+  mintAccount: Mint,
+  initializationStatus: boolean,
+  mint_authority: PublicKey,
+  decimals: number,
+  supply?: number,
+  freeze_authority?: PublicKey
+) => {
+  if (mintAccount.isInitialized !== initializationStatus) {
+    throw Error(
+      `TSX: verifyMint: Mint.isInitialized is ${mintAccount.isInitialized}`
+    );
+  }
+  if (!mintAccount.mintAuthority?.equals(mint_authority)) {
+    throw Error(
+      `TSX: verifyMint: Mint.mintAuthority is ${mintAccount.mintAuthority?.toBase58()}`
+    );
+  }
+  if (mintAccount.decimals !== decimals) {
+    throw Error(
+      `TSX: verifyMint: Mint.decimals are ${mintAccount.decimals}`
+    );
+  }
+
+  if (supply !== undefined) {
+    if (mintAccount.supply !== BigInt(supply)) {
+      throw Error(
+        `TSX: verifyMint: Supply is ${mintAccount.supply}`
+      );
+    }
+  }
+
+  if (freeze_authority !== undefined) {
+    if (!mintAccount.freezeAuthority?.equals(freeze_authority)) {
+      throw Error(
+        `TSX: verifyMint:  WPokt Invalid Mint.freezeAuthority is ${mintAccount.freezeAuthority?.toBase58()}`
+      );
+    }
+  }
+};

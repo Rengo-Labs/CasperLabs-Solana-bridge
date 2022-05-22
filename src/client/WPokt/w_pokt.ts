@@ -12,14 +12,9 @@ import {
   SYSVAR_RENT_PUBKEY,
 } from "@solana/web3.js";
 import * as splToken from "@solana/spl-token";
-import { WPoktInstruction } from "./instructions";
 import * as WPoktState from "./state";
-import { isWeakMap } from "util/types";
-import * as BufferLayout from "@solana/buffer-layout";
-import * as BufferLayoutUtils from "@solana/buffer-layout-utils";
-import { bigInt, publicKey } from "@solana/buffer-layout-utils";
-import { BN } from "bn.js";
-import { assert } from "console";
+import { verifyMint } from "../utils";
+import * as WPoktInstruction from "./instructions";
 
 // returns the WPokt PDA
 export const wPoktPdaKeypair = async (
@@ -82,7 +77,7 @@ export const construct = async (
       { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
     ],
-    data: Buffer.from(Uint8Array.of(WPoktInstruction.Construct)),
+    data: Buffer.from(Uint8Array.of(WPoktInstruction.WPoktInstruction.Construct)),
   });
 
   const tx = new Transaction().add(ix);
@@ -98,7 +93,7 @@ export const setBridge = async (
 ): Promise<string> => {
   // const buffers = ;
   const data = Buffer.concat([
-    Buffer.from(Uint8Array.of(WPoktInstruction.SetBridgeOnlyOwner)),
+    Buffer.from(Uint8Array.of(WPoktInstruction.WPoktInstruction.SetBridgeOnlyOwner)),
     bridgePubkey.toBuffer(),
   ]);
   //  buffers.concat(wPoktPda.toBuffer());
@@ -114,11 +109,6 @@ export const setBridge = async (
   return await sendAndConfirmTransaction(connection, tx, [owner]);
 };
 
-interface MintInstruction {
-  instruction: number;
-  amount: number;
-}
-
 export const mint = async (
   connection: Connection,
   programId: PublicKey,
@@ -129,15 +119,11 @@ export const mint = async (
   amount: number
 ) => {
   let data = Buffer.alloc(9); // 1B Instruction, 9B amount
-  const instructionDataLayout: BufferLayout.Layout<MintInstruction> =
-    BufferLayout.struct([
-      BufferLayout.u8("instruction"),
-      BufferLayout.nu64("amount"),
-    ]);
+ 
 
-  const instructionDataLength = instructionDataLayout.encode(
+  const instructionDataLength = WPoktInstruction.W_POKT_MINT_INSTRUCTION_LAYOUT.encode(
     {
-      instruction: WPoktInstruction.MintOnlyBridge,
+      instruction: WPoktInstruction.WPoktInstruction.MintOnlyBridge,
       amount,
     },
     data
@@ -230,38 +216,6 @@ export const verifyWpoktPda = async (
     throw Error(
       `TSX verifyWpoktPdaDataConstruction(): WPokt PDA Account BridgeAddress Improper Initialization`
     );
-  }
-};
-
-export const verifyMint = async (
-  wPoktMint: splToken.Mint,
-  initializationStatus: boolean,
-  mint_authority: PublicKey,
-  decimals: number,
-  freeze_authority?: PublicKey
-) => {
-  if (wPoktMint.isInitialized !== initializationStatus) {
-    throw Error(
-      `TSX: verifyMint: WPokt Mint.isInitialized is ${!initializationStatus}`
-    );
-  }
-  if (!wPoktMint.mintAuthority?.equals(mint_authority)) {
-    throw Error(
-      `TSX: verifyMint:  WPokt Invalid Mint.mintAuthority is ${wPoktMint.mintAuthority?.toBase58()}`
-    );
-  }
-  if (wPoktMint.decimals !== decimals) {
-    throw Error(
-      `TSX: verifyMint:  WPokt Incorrect Mint.decimals is ${wPoktMint.decimals}`
-    );
-  }
-
-  if (freeze_authority !== undefined) {
-    if (!wPoktMint.freezeAuthority?.equals(freeze_authority)) {
-      throw Error(
-        `TSX: verifyMint:  WPokt Invalid Mint.freezeAuthority is ${wPoktMint.freezeAuthority?.toBase58()}`
-      );
-    }
   }
 };
 

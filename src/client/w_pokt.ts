@@ -5,7 +5,6 @@ import {
   Connection,
   LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
-import { AccountLayout } from "@solana/spl-token";
 import * as SplToken from "@solana/spl-token";
 
 import {
@@ -15,7 +14,6 @@ import {
 } from "./utils";
 import path from "path";
 import { assert } from "console";
-import { bigInt } from "@solana/buffer-layout-utils";
 
 // import { W_POKT_ACCOUNT_DATA_LAYOUT } from "./state";
 // import { WPoktInstruction } from "./WPokt/instructions";
@@ -72,12 +70,14 @@ const wPoktTests = async (
     mintAccount.publicKey
   );
   console.log(
-    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Accounts creation and initial state verified...`
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Accounts Created and Verified...`
   );
 
   // construct WPokt
   await WPokt.construct(connection, payer, mintAccount.publicKey, programId);
-  console.log(`TSX - wPoktTests(): ${W_POKT_LIB_NAME} Constructed...`);
+  console.log(
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Instruction::Construct...`
+  );
 
   await WPokt.verifyConstruction(
     connection,
@@ -87,7 +87,7 @@ const wPoktTests = async (
     mintAccount.publicKey
   );
   console.log(
-    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Accounts Post-Construction state verified...`
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Instruction::Construct Verified...`
   );
 
   const bridgeAddress = Keypair.generate();
@@ -105,7 +105,7 @@ const wPoktTests = async (
     bridgeAddress.publicKey
   );
   console.log(
-    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} WPokt Bridge Address set to ${bridgeAddress.publicKey.toBase58()}...`
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Instruction::setBridgeOnlyOwner{ bridgeAddress: ${bridgeAddress.publicKey.toBase58()} }...`
   );
 
   // verify WPokt Bridge Address
@@ -115,7 +115,7 @@ const wPoktTests = async (
     bridgeAddress.publicKey
   );
   console.log(
-    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} WPokt Bridge Address Verified...`
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Instruction::setBridgeOnlyOwner{...} Verified...`
   );
 
   // create a token account
@@ -125,9 +125,9 @@ const wPoktTests = async (
     mintAccount.publicKey,
     bridgeAddress.publicKey
   );
-  console.log(
-    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Bridge Token Account Created and Initialized...`
-  );
+  // console.log(
+  //   `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Bridge Token Account Created and Initialized...`
+  // );
 
   // verify account creation
   let bridgeTokenAccountInfo = await SplToken.getAccount(
@@ -143,9 +143,9 @@ const wPoktTests = async (
     bridgeTokenAccountInfo.owner.equals(bridgeAddress.publicKey),
     "bridgeTokenAccountInfo.owner != bridgeAddress"
   );
-  console.log(
-    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Bridge Token Account Creation and Initialization Verified...`
-  );
+  // console.log(
+  //   `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Bridge Token Account Creation and Initialization Verified...`
+  // );
 
   const amount = 1;
   // Mint instruction
@@ -158,14 +158,35 @@ const wPoktTests = async (
     bridgeTokenAccount,
     amount
   );
+  console.log(
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Instruction::Mint{ amount: ${amount} }...`
+  );
 
-  // bridgeTokenAccountInfo = await SplToken.getAccount(
-  //   connection,
-  //   bridgeTokenAccount
-  // );
-  // assert(bridgeTokenAccountInfo.amount===BigInt(amount), `bridgeTokenAccountInfo.amount !== ${amount}`);
-  // assert(bridgeTokenAccountInfo.owner.equals(bridgeAddress.publicKey), "bridgeTokenAccountInfo.owner != bridgeAddress");
+  bridgeTokenAccountInfo = await SplToken.getAccount(
+    connection,
+    bridgeTokenAccount
+  );
+  assert(
+    bridgeTokenAccountInfo.amount === BigInt(amount),
+    `bridgeTokenAccountInfo.amount !== ${amount}`
+  );
+  assert(
+    bridgeTokenAccountInfo.owner.equals(bridgeAddress.publicKey),
+    "bridgeTokenAccountInfo.owner != bridgeAddress"
+  );
 
+  let mintAccountInfo = await SplToken.getMint(
+    connection,
+    mintAccount.publicKey
+  );
+  assert(
+    mintAccountInfo.supply === BigInt(amount),
+    `mintAccountInfo.supply !== BigInt(amount)`
+  );
+
+  console.log(
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Instruction::Mint{...} Verified....`
+  );
   return [programId, mintAccount, pdaAccount];
 };
 
