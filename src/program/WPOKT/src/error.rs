@@ -10,6 +10,8 @@ pub enum WPOKTError {
     AuthNotYetValid,
     #[error("wPOKT:AUTH_ALREADY_USED")]
     AuthAlreadyUsed,
+    #[error("wPOKT:INVALID_MINTER")]
+    InvalidMinter,
 }
 
 impl From<WPOKTError> for ProgramError {
