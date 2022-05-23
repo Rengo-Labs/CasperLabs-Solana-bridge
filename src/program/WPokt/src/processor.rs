@@ -205,54 +205,56 @@ fn mint(_program_id: &Pubkey, _accounts: &[AccountInfo], _amount: u64) -> Progra
 }
 
 fn burn(_program_id: &Pubkey, _accounts: &[AccountInfo], _amount: u64) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let source_account = next_account_info(account_info_iter)?;
-    // let source_auth_account = next_account_info(account_info_iter)?;
-    // let mint_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let source_account = next_account_info(account_info_iter)?;
+    let source_auth_account = next_account_info(account_info_iter)?;
+    let mint_account = next_account_info(account_info_iter)?;
+    let token_account = next_account_info(account_info_iter)?; // The SPL Token program
 
-    // let burn_ix = spl_token_2022::instruction::burn(
-    //     &spl_token_2022::id(),
-    //     source_account.key,
-    //     mint_account.key,
-    //     source_auth_account.key,
-    //     &[&source_auth_account.key],
-    //     _amount,
-    // )?;
+    let burn_ix = spl_token::instruction::burn(
+        &spl_token::id(),
+        source_account.key,
+        mint_account.key,
+        source_auth_account.key,
+        &[&source_auth_account.key],
+        _amount,
+    )?;
 
-    // program::invoke(
-    //     &burn_ix,
-    //     &[
-    //         source_account.clone(),
-    //         mint_account.clone(),
-    //         source_auth_account.clone(),
-    //     ],
-    // )?;
+    program::invoke(
+        &burn_ix,
+        &[
+            source_account.clone(),
+            mint_account.clone(),
+            source_auth_account.clone(),
+            token_account.clone(),
+        ],
+    )?;
     Ok(())
 }
 
 fn renounce_ownership(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let wpokt_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let wpokt_account = next_account_info(account_info_iter)?;
 
-    // if wpokt_account.owner != _program_id {
-    //     return Err(ProgramError::IncorrectProgramId);
-    // }
-    // let mut wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
-    // if !wpokt_data.is_initialized {
-    //     return Err(ProgramError::UninitializedAccount);
-    // }
+    if *wpokt_account.owner != *_program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let mut wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
+    if !wpokt_data.is_initialized {
+        return Err(ProgramError::UninitializedAccount);
+    }
 
-    // // only owner
-    // if !owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
-    // if wpokt_data.owner != *owner_account.key {
-    //     return Err(ProgramError::IllegalOwner);
-    // }
+    // only owner
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if wpokt_data.owner != *owner_account.key {
+        return Err(ProgramError::IllegalOwner);
+    }
 
-    // wpokt_data.owner = Pubkey::new_from_array([0_u8; 32]);
-    // wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
+    wpokt_data.owner = Pubkey::new_from_array([0_u8; 32]);
+    wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -261,30 +263,36 @@ fn transfer_ownership(
     _accounts: &[AccountInfo],
     _new_owner: Pubkey,
 ) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let wpokt_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let wpokt_account = next_account_info(account_info_iter)?;
+    let new_owner_account = next_account_info(account_info_iter)?;
 
-    // if wpokt_account.owner != _program_id {
-    //     return Err(ProgramError::IncorrectProgramId);
-    // }
-    // let mut wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
-    // if !wpokt_data.is_initialized {
-    //     return Err(ProgramError::UninitializedAccount);
-    // }
+    if wpokt_account.owner != _program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
 
-    // // only owner
-    // if !owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
-    // if wpokt_data.owner != *owner_account.key {
-    //     return Err(ProgramError::IllegalOwner);
-    // }
+    if *new_owner_account.key != _new_owner {
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
-    // if _new_owner == Pubkey::new_from_array([0_u8; 32]) {
-    //     return Err(ProgramError::InvalidArgument);
-    // }
-    // wpokt_data.owner = _new_owner;
-    // wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
+    let mut wpokt_data = WPokt::unpack_from_slice(&wpokt_account.data.borrow())?;
+    if !wpokt_data.is_initialized {
+        return Err(ProgramError::UninitializedAccount);
+    }
+
+    // only owner
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if wpokt_data.owner != *owner_account.key {
+        return Err(ProgramError::IllegalOwner);
+    }
+
+    if _new_owner == Pubkey::new_from_array([0_u8; 32]) {
+        return Err(ProgramError::InvalidArgument);
+    }
+    wpokt_data.owner = _new_owner;
+    wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
     Ok(())
 }

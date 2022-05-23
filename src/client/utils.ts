@@ -8,7 +8,7 @@ import path from "path";
 import yaml from "yaml";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { Connection } from "@solana/web3.js";
-import {Mint} from "@solana/spl-token";
+import { Mint } from "@solana/spl-token";
 
 // import * as buffer from "buffer";
 /**
@@ -106,17 +106,24 @@ export const establishPayer = async (connection: Connection) => {
   return payer;
 };
 
-export const checkOrDeployProgram = async (connection: Connection, programPath: string, programName: string): Promise<PublicKey>=>{
-  const programKeypairPath = path.join(programPath, programName + "-keypair.json");
+export const checkOrDeployProgram = async (
+  connection: Connection,
+  programPath: string,
+  programName: string
+): Promise<PublicKey> => {
+  const programKeypairPath = path.join(
+    programPath,
+    programName + "-keypair.json"
+  );
   const programSoPath = path.join(programPath, programName, ".so");
 
   let programId: PublicKey;
 
   // read keypair
-  try{
+  try {
     const programKeypair = await createKeypairFromFile(programKeypairPath);
     programId = programKeypair.publicKey;
-  } catch(err){
+  } catch (err) {
     const errMsg = (err as Error).message;
     throw new Error(
       `Failed to read program keypair at '${programKeypairPath}' due to error: ${errMsg}. Program may need to be deployed with \`solana program deploy ${programKeypairPath}\``
@@ -138,7 +145,7 @@ export const checkOrDeployProgram = async (connection: Connection, programPath: 
   }
   // console.log(`Using program ${programId.toBase58()}`);
   return programId;
-}
+};
 
 export const verifyMint = async (
   mintAccount: Mint,
@@ -159,16 +166,12 @@ export const verifyMint = async (
     );
   }
   if (mintAccount.decimals !== decimals) {
-    throw Error(
-      `TSX: verifyMint: Mint.decimals are ${mintAccount.decimals}`
-    );
+    throw Error(`TSX: verifyMint: Mint.decimals are ${mintAccount.decimals}`);
   }
 
   if (supply !== undefined) {
     if (mintAccount.supply !== BigInt(supply)) {
-      throw Error(
-        `TSX: verifyMint: Supply is ${mintAccount.supply}`
-      );
+      throw Error(`TSX: verifyMint: Supply is ${mintAccount.supply}`);
     }
   }
 

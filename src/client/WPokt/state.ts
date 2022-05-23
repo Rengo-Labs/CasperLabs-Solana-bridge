@@ -14,7 +14,6 @@ export interface WPoktLayout {
 // /**
 //  * Layout for WPokt state struct
 //  */
-// bufferLayout.str
 export const W_POKT_ACCOUNT_DATA_LAYOUT: Structure<WPoktLayout> = struct([
   bool("IsInitialized"),
   publicKey("bridgeAddress"),

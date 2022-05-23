@@ -187,6 +187,37 @@ const wPoktTests = async (
   console.log(
     `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Instruction::Mint{...} Verified....`
   );
+
+  // Burn
+  await WPokt.burn(
+    connection,
+    programId,
+    mintAccount.publicKey,
+    bridgeTokenAccount,
+    bridgeAddress,
+    amount
+  );
+  console.log(
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Instruction::Birn{ amount: ${amount} }...`
+  );
+  bridgeTokenAccountInfo = await SplToken.getAccount(
+    connection,
+    bridgeTokenAccount
+  );
+  assert(
+    bridgeTokenAccountInfo.amount === BigInt(0),
+    `bridgeTokenAccountInfo.amount !== ${0}`
+  );
+
+  mintAccountInfo = await SplToken.getMint(connection, mintAccount.publicKey);
+  assert(
+    mintAccountInfo.supply === BigInt(0),
+    `mintAccountInfo.supply !== BigInt(0)`
+  );
+
+  console.log(
+    `TSX - wPoktTests(): ${W_POKT_LIB_NAME} Instruction::Burn{...} Verified....`
+  );
   return [programId, mintAccount, pdaAccount];
 };
 

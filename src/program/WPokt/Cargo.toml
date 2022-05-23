@@ -12,7 +12,6 @@ test-bpf = []
 [dependencies]
 solana-program = "1.9.5"
 borsh = "0.9"
-spl-token-2022 = {version = "0.2.0" , features  = ["no-entrypoint"] }
 arrayref = "0.3.6"
 thiserror = "1.0"
 spl-token = {version = "3.3.0", features  = ["no-entrypoint"]}

@@ -77,7 +77,9 @@ export const construct = async (
       { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
     ],
-    data: Buffer.from(Uint8Array.of(WPoktInstruction.WPoktInstruction.Construct)),
+    data: Buffer.from(
+      Uint8Array.of(WPoktInstruction.WPoktInstruction.Construct)
+    ),
   });
 
   const tx = new Transaction().add(ix);
@@ -93,7 +95,9 @@ export const setBridge = async (
 ): Promise<string> => {
   // const buffers = ;
   const data = Buffer.concat([
-    Buffer.from(Uint8Array.of(WPoktInstruction.WPoktInstruction.SetBridgeOnlyOwner)),
+    Buffer.from(
+      Uint8Array.of(WPoktInstruction.WPoktInstruction.SetBridgeOnlyOwner)
+    ),
     bridgePubkey.toBuffer(),
   ]);
   //  buffers.concat(wPoktPda.toBuffer());
@@ -117,17 +121,16 @@ export const mint = async (
   bridgeAccount: Keypair,
   receiverAccount: PublicKey,
   amount: number
-) => {
+): Promise<string> => {
   let data = Buffer.alloc(9); // 1B Instruction, 9B amount
- 
-
-  const instructionDataLength = WPoktInstruction.W_POKT_MINT_INSTRUCTION_LAYOUT.encode(
-    {
-      instruction: WPoktInstruction.WPoktInstruction.MintOnlyBridge,
-      amount,
-    },
-    data
-  );
+  const instructionDataLength =
+    WPoktInstruction.W_POKT_MINT_INSTRUCTION_LAYOUT.encode(
+      {
+        instruction: WPoktInstruction.WPoktInstruction.MintOnlyBridge,
+        amount,
+      },
+      data
+    );
 
   const ix = new TransactionInstruction({
     programId,
@@ -144,10 +147,45 @@ export const mint = async (
   return await sendAndConfirmTransaction(connection, tx, [bridgeAccount]);
 };
 
-// export const verifyMintInstruction = async (connection: Connection, tokenAccount: PublicKey, balance: number)=>{
-//     // get bridge token account, and check its balance
+export const burn = async (
+  connection: Connection,
+  programId: PublicKey,
+  mintAcc: PublicKey,
+  tokenAccount: PublicKey,
+  tokenAccountAuthority: Keypair,
+  amount: number
+): Promise<string> => {
+  // reusing instruction data for MintOnlyOnlyOwner since Burn has the same layout.
+  let data = Buffer.alloc(9); // 1B Instruction, 9B amount
+  const instructionData =
+    WPoktInstruction.W_POKT_MINT_INSTRUCTION_LAYOUT.encode(
+      {
+        instruction: WPoktInstruction.WPoktInstruction.Burn,
+        amount,
+      },
+      data
+    );
 
-// }
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: tokenAccount, isSigner: false, isWritable: true },
+      {
+        pubkey: tokenAccountAuthority.publicKey,
+        isSigner: true,
+        isWritable: false,
+      },
+      { pubkey: mintAcc, isSigner: false, isWritable: true },
+      { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+  const tx = new Transaction().add(ix);
+  return await sendAndConfirmTransaction(connection, tx, [
+    tokenAccountAuthority,
+  ]);
+};
+
 /**
  * Verifies all required accounts were created and have the correct initial states
  * @param connection the rpc connection instance

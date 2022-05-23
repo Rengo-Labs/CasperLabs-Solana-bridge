@@ -39,7 +39,7 @@ export interface MintOnlyBridge {
 }
 
 export const W_POKT_MINT_INSTRUCTION_LAYOUT: BufferLayout.Layout<MintOnlyBridge> =
-BufferLayout.struct([
-  BufferLayout.u8("instruction"),
-  BufferLayout.nu64("amount"),
-]);
+  BufferLayout.struct([
+    BufferLayout.u8("instruction"),
+    BufferLayout.nu64("amount"),
+  ]);
