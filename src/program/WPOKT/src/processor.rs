@@ -89,6 +89,10 @@ fn construct(
         return Err(ProgramError::IncorrectProgramId);
     }
 
+    if !initial_minter_account.key.eq(_initial_minter) {
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
     let (pda, bump_seed) = generate_wpokt_pda(_program_id, mint_account.key);
 
     if *wpokt_account.key != pda {
@@ -168,7 +172,7 @@ fn mint(
     _value: u64,
 ) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
-    let minter_account = next_account_info(account_info_iter)?;
+    let minter_account = next_account_info(account_info_iter)?; // signer and payer
     let wpokt_account = next_account_info(account_info_iter)?;
     let mint_account = next_account_info(account_info_iter)?;
     let receiver_account = next_account_info(account_info_iter)?;
@@ -185,6 +189,10 @@ fn mint(
 
     if *wpokt_account.owner != *_program_id {
         return Err(ProgramError::IncorrectProgramId);
+    }
+
+    if !receiver_account.key.eq(&_to) {
+        return Err(ProgramError::InvalidInstructionData);
     }
 
     let wpokt_data = WPOKT::unpack_from_slice(&wpokt_account.data.borrow())?;
@@ -232,22 +240,29 @@ fn change_minter(
     _new_minter: Pubkey,
 ) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
+    let minter = next_account_info(account_info_iter)?; // signer and payer
     let wpokt_account = next_account_info(account_info_iter)?;
     let mint_account = next_account_info(account_info_iter)?;
-    let mint_authority = next_account_info(account_info_iter)?;
+    let token_program_account = next_account_info(account_info_iter)?;
     let new_mint_authority_account = next_account_info(account_info_iter)?;
 
+    let (pda, bump_seed) = generate_wpokt_pda(_program_id, mint_account.key);
+
     // onlyOwner
-    if !mint_authority.is_signer {
+    if !minter.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    if !wpokt_account.key.eq(&pda) {
+        return Err(ProgramError::InvalidInstructionData);
     }
 
     let mut wpokt_data = WPOKT::unpack_from_slice(&wpokt_account.data.borrow())?;
     if !wpokt_data.is_initialized {
         return Err(ProgramError::UninitializedAccount);
     }
-    if *mint_authority.key != wpokt_data.minter || *new_mint_authority_account.key != _new_minter {
-        return Err(ProgramError::InvalidAccountData);
+    if *minter.key != wpokt_data.minter || *new_mint_authority_account.key != _new_minter {
+        return Err(ProgramError::InvalidInstructionData);
     }
 
     let change_mint_auth_ix = spl_token::instruction::set_authority(
@@ -255,13 +270,26 @@ fn change_minter(
         mint_account.key,
         Some(new_mint_authority_account.key),
         spl_token::instruction::AuthorityType::MintTokens,
-        mint_authority.key,
-        &[mint_authority.key],
+        &pda,
+        &[&pda],
     )?;
 
-    program::invoke(
+    let bump_ref = &[bump_seed];
+    let pda_seeds = &[
+        mint_account.key.as_ref(),
+        b"WPOKT",
+        b"global_state_account",
+        bump_ref,
+    ][..];
+
+    program::invoke_signed(
         &change_mint_auth_ix,
-        &[mint_account.clone(), new_mint_authority_account.clone()],
+        &[
+            mint_account.clone(),
+            new_mint_authority_account.clone(),
+            token_program_account.clone(),
+        ],
+        &[pda_seeds],
     )?;
 
     wpokt_data.minter = *new_mint_authority_account.key;
@@ -278,12 +306,13 @@ fn permit(
     deadline: u64,
 ) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
+    let src_token_account_owner = next_account_info(account_info_iter)?; //signer signed this offline
     let nonces_account = next_account_info(account_info_iter)?;
-    let src_token_account_owner = next_account_info(account_info_iter)?;
     let src_token_account = next_account_info(account_info_iter)?;
-    let delegate_account = next_account_info(account_info_iter)?;
+    let delegate_token_account = next_account_info(account_info_iter)?;
+    let token_program_account = next_account_info(account_info_iter)?;
 
-    if *delegate_account.key != spender {
+    if *delegate_token_account.key != spender {
         return Err(ProgramError::InvalidInstructionData);
     }
     let clock = Clock::get()?;
@@ -302,11 +331,11 @@ fn permit(
     let approve_ix = spl_token::instruction::approve(
         &spl_token::id(),
         src_token_account.key,
-        delegate_account.key,
+        delegate_token_account.key,
         src_token_account_owner.key,
         &[
             &src_token_account.key,
-            &delegate_account.key,
+            &delegate_token_account.key,
             &src_token_account_owner.key,
         ],
         value,
@@ -315,8 +344,9 @@ fn permit(
         &approve_ix,
         &[
             src_token_account.clone(),
-            delegate_account.clone(),
+            delegate_token_account.clone(),
             src_token_account_owner.clone(),
+            token_program_account.clone(),
         ],
     )?;
     Ok(())
@@ -338,6 +368,7 @@ fn transfer_with_authorization(
     let src_token_account = next_account_info(account_info_iter)?;
     let src_token_account_owner_account = next_account_info(account_info_iter)?;
     let destination_account = next_account_info(account_info_iter)?;
+    let token_program_account = next_account_info(account_info_iter)?;
 
     let clock = Clock::get()?;
     let current_timestamp = clock.unix_timestamp as u64;
@@ -385,6 +416,7 @@ fn transfer_with_authorization(
             mint_account.clone(),
             destination_account.clone(),
             src_token_account_owner_account.clone(),
+            token_program_account.clone(),
         ],
     )?;
 
