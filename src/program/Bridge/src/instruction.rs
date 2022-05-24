@@ -115,15 +115,6 @@ pub enum BridgeInstruction {
     /// 1. `[]` The account used as 'token_list' dictionary
     /// 2. `[]` The account used as 'calculate_fee_result' account
     CalculateFee { token_index: u64, amount: u64 },
-    Verify {
-        token_index: u64,
-        from: Pubkey,
-        to: Pubkey,
-        amount: u64,
-        chain_id: u64,
-        index: u64,
-        signature: Vec<u8>,
-    },
     /// Accounts expected:
     /// 0. `[signer]` The program owner's account.
     /// 1. `[writeable]` The account used as WPokt's global state

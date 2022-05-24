@@ -16,7 +16,7 @@ use solana_program::{
     pubkey::Pubkey,
     sysvar::Sysvar,
 };
-use spl_token_2022;
+use spl_token;
 use std::collections::BTreeMap;
 
 pub const TEN_POW_18: u64 = 1000000000000000000;
@@ -112,15 +112,6 @@ impl Processor {
                 token_index,
                 amount,
             } => calculate_fee(program_id, accounts, token_index, amount),
-            BridgeInstruction::Verify {
-                token_index,
-                from,
-                to,
-                amount,
-                chain_id,
-                index,
-                signature,
-            } => Ok(()),
             BridgeInstruction::RenounceOwnership => renounce_ownership(program_id, accounts),
             BridgeInstruction::TransferOwnership { new_owner } => {
                 transfer_ownership(program_id, accounts, new_owner)
@@ -140,11 +131,14 @@ fn construct(
     verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
     let account_info_iter = &mut _accounts.iter();
     let owner_account = next_account_info(account_info_iter)?;
-    let bridge_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?; // PDA account
     let claimed_account = next_account_info(account_info_iter)?;
     let dtc_account = next_account_info(account_info_iter)?;
     let token_added_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
+
+    let pda_seeds :&[&[u8]] = &[b"bridge", b"signature_acc"];
+    let (pda, bump) = Pubkey::find_program_address(pda_seeds, _program_id);
 
     if !owner_account.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
@@ -236,7 +230,7 @@ fn transfer_request(
     _chain_id: u64,
 ) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
-    let bridge_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?; // PDA acount
     let token_list_account = next_account_info(account_info_iter)?;
     let mint_account = next_account_info(account_info_iter)?;
     let source_account = next_account_info(account_info_iter)?;
@@ -321,9 +315,9 @@ fn transfer_request(
         .insert(_token_index, token_data.try_to_vec().unwrap());
 
     // CPI to transfer tokens from transaction sender to bridge program token account
-    let mint_data = spl_token_2022::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
-    let transfer_from_ix = spl_token_2022::instruction::transfer_checked(
-        &spl_token_2022::id(),
+    let mint_data = spl_token::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
+    let transfer_from_ix = spl_token::instruction::transfer_checked(
+        &spl_token::id(),
         source_account.key,
         mint_account.key,
         bridge_token_account.key,
@@ -361,15 +355,21 @@ fn transfer_receipt(
     _signature_account: &Pubkey,
 ) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
-    let bridge_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?; // PDA Account
     let claimed_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
     let daily_token_claims_account = next_account_info(account_info_iter)?;
-    let signature_account = next_account_info(account_info_iter)?;
+    let signature_account = next_account_info(account_info_iter)?; // The account the transaction creator signed this transaction with
     let mint_account = next_account_info(account_info_iter)?;
     let bridge_token_account = next_account_info(account_info_iter)?;
     let receiver_token_account = next_account_info(account_info_iter)?;
-    let bridge_pda_account = next_account_info(account_info_iter)?;
+
+    let pda_seeds: &[&[u8]] = &[b"bridge", b"global_state_account"];
+    let (pda, bump)= Pubkey::find_program_address(pda_seeds, _program_id);
+
+    if !bridge_account.key.eq(&pda){
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
     if !signature_account.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
@@ -379,7 +379,7 @@ fn transfer_receipt(
     }
     verify_program_accounts_ownership(_program_id, _accounts[..4].as_ref())?;
 
-    let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
     let mut token_list_data =
         TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
     let mut claimed_data = ClaimedDictionary::unpack_from_slice(*claimed_account.data.borrow())?;
@@ -389,7 +389,7 @@ fn transfer_receipt(
         Some(v) => v,
     };
 
-    let mut token_data: TokenData = TokenData::try_from_slice(token_data_bytes)?;
+    let token_data: TokenData = TokenData::try_from_slice(token_data_bytes)?;
 
     if !token_data.exists {
         return Err(ProgramError::Custom(BridgeError::NonExistantToken as u32));
@@ -441,13 +441,11 @@ fn transfer_receipt(
     if *receiver_token_account.key != *_to {
         return Err(ProgramError::InvalidAccountData);
     }
-    let mint_data = spl_token_2022::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
-    // let seeds = bridge_pda_account_seed(_program_id, mint_account);
-    let seeds = format!("{}bridge_pda_account", _program_id);
-    let (pda, nonce) = Pubkey::find_program_address(&[seeds.as_bytes()], _program_id);
 
-    let transfer_ix = spl_token_2022::instruction::transfer_checked(
-        &spl_token_2022::id(),
+    let mint_data = spl_token::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
+
+    let transfer_ix = spl_token::instruction::transfer_checked(
+        &spl_token::id(),
         bridge_token_account.key,
         mint_account.key,
         receiver_token_account.key,
@@ -457,15 +455,16 @@ fn transfer_receipt(
         mint_data.decimals,
     )?;
 
+    let pda_seeds: &[&[u8]] = &[b"bridge", b"global_state_account", &[bump]];
     program::invoke_signed(
         &transfer_ix,
         &[
             bridge_token_account.clone(),
             mint_account.clone(),
             receiver_token_account.clone(),
-            bridge_pda_account.clone(),
+            bridge_account.clone(),
         ],
-        &[&[seeds.as_bytes(), &[nonce]]],
+        &[pda_seeds],
     )?;
 
     let _ = claimed_data
@@ -728,11 +727,13 @@ fn withdraw_fees(_program_id: &Pubkey, _accounts: &[AccountInfo], _index: u64) -
     let account_info_iter = &mut _accounts.iter();
     let owner_account = next_account_info(account_info_iter)?;
     let owner_token_account = next_account_info(account_info_iter)?;
-    let bridge_account = next_account_info(account_info_iter)?;
-    let bridge_pda_account = next_account_info(account_info_iter)?; // the PDA account created by bridge
+    let bridge_account = next_account_info(account_info_iter)?; // the PDA account
     let bridge_token_account = next_account_info(account_info_iter)?; // PDA token account c
     let mint_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
+
+    let pda_seeds: &[&[u8]] = &[b"bridge", b"global_state_account"];
+    let (pda, bump)= Pubkey::find_program_address(pda_seeds, _program_id);
 
     verify_program_accounts_ownership(&_program_id, _accounts[1..3].as_ref())?;
 
@@ -761,13 +762,13 @@ fn withdraw_fees(_program_id: &Pubkey, _accounts: &[AccountInfo], _index: u64) -
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let mint_data = spl_token_2022::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
-    // let seeds = bridge_pda_account_seed(_program_id, mint_account);
-    let seeds = format!("{}bridge_pda_account", _program_id);
-    let (pda, nonce) = Pubkey::find_program_address(&[seeds.as_bytes()], _program_id);
+    let mint_data = spl_token::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
 
-    let transfer_ix = spl_token_2022::instruction::transfer_checked(
-        &spl_token_2022::id(),
+
+    let pda_seeds: &[&[u8]] = &[b"bridge", b"global_state_account", &[bump]];
+
+    let transfer_ix = spl_token::instruction::transfer_checked(
+        &spl_token::id(),
         bridge_token_account.key,
         mint_account.key,
         owner_token_account.key,
@@ -783,9 +784,9 @@ fn withdraw_fees(_program_id: &Pubkey, _accounts: &[AccountInfo], _index: u64) -
             bridge_token_account.clone(),
             mint_account.clone(),
             owner_token_account.clone(),
-            bridge_pda_account.clone(),
+            bridge_account.clone(),
         ],
-        &[&[seeds.as_bytes(), &[nonce]]],
+        &[pda_seeds],
     )?;
 
     let token_data: Vec<u8> = token_data.try_to_vec().unwrap();
@@ -1284,16 +1285,6 @@ fn transfer_ownership(
 
 // ========================== Helper Functions ==================== //
 
-// verifies that all given accounts signed the transaciton
-fn verify_transaction_signatures(_accounts: &[AccountInfo]) -> ProgramResult {
-    for account in _accounts.into_iter() {
-        if !account.is_signer {
-            return Err(ProgramError::MissingRequiredSignature);
-        }
-    }
-    Ok(())
-}
-
 // Checks that all provided accounts are owned by the provided program_id
 fn verify_program_accounts_ownership(
     _program_id: &Pubkey,
@@ -1369,8 +1360,8 @@ fn only_owner(_owner_account: &AccountInfo, bridge_data: &Bridge) -> ProgramResu
 }
 
 // fn bridge_pda_account_seed(_program_id: &Pubkey, _mint_account: &AccountInfo) -> String {
-//     let mint_data: spl_token_2022::state::Mint =
-//         spl_token_2022::state::Mint::unpack_from_slice(&_mint_account.data.borrow())?;
+//     let mint_data: spl_token::state::Mint =
+//         spl_token::state::Mint::unpack_from_slice(&_mint_account.data.borrow())?;
 //     format!(
 //         "{}{}{}{}",
 //         _program_id, *_mint_account.key, *_mint_account.owner, mint_data.decimals
