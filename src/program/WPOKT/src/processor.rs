@@ -152,66 +152,66 @@ fn mint(
     _to: Pubkey,
     _value: u64,
 ) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let minter_account = next_account_info(account_info_iter)?; // signer and payer
-    // let wpokt_account = next_account_info(account_info_iter)?;
-    // let mint_account = next_account_info(account_info_iter)?;
-    // let receiver_account = next_account_info(account_info_iter)?;
-    // let token_program_account = next_account_info(account_info_iter)?;
-    // let (pda, bump_seed) = generate_wpokt_pda(_program_id, mint_account.key);
+    let account_info_iter = &mut _accounts.iter();
+    let minter_account = next_account_info(account_info_iter)?; // signer and payer
+    let wpokt_account = next_account_info(account_info_iter)?;
+    let mint_account = next_account_info(account_info_iter)?;
+    let receiver_account = next_account_info(account_info_iter)?;
+    let token_program_account = next_account_info(account_info_iter)?;
+    let (pda, bump_seed) = generate_wpokt_pda(_program_id, mint_account.key);
 
-    // if !minter_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    if !minter_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // if *wpokt_account.key != pda {
-    //     return Err(ProgramError::InvalidInstructionData);
-    // }
+    if *wpokt_account.key != pda {
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
-    // if *wpokt_account.owner != *_program_id {
-    //     return Err(ProgramError::IncorrectProgramId);
-    // }
+    if *wpokt_account.owner != *_program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
 
-    // if !receiver_account.key.eq(&_to) {
-    //     return Err(ProgramError::InvalidInstructionData);
-    // }
+    if !receiver_account.key.eq(&_to) {
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
-    // let wpokt_data = WPOKT::unpack_from_slice(&wpokt_account.data.borrow())?;
-    // if !wpokt_data.is_initialized {
-    //     return Err(ProgramError::UninitializedAccount);
-    // }
-    // if !wpokt_data.minter.eq(minter_account.key) {
-    //     return Err(ProgramError::Custom(WPOKTError::InvalidMinter as u32));
-    // }
+    let wpokt_data = WPOKT::unpack_from_slice(&wpokt_account.data.borrow())?;
+    if !wpokt_data.is_initialized {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if !wpokt_data.minter.eq(minter_account.key) {
+        return Err(ProgramError::Custom(WPOKTError::InvalidMinter as u32));
+    }
 
-    // // mint instruction
-    // let mint_ix = spl_token::instruction::mint_to(
-    //     &spl_token::id(),
-    //     mint_account.key,
-    //     receiver_account.key,
-    //     &pda,
-    //     &[&pda],
-    //     _value,
-    // )?;
+    // mint instruction
+    let mint_ix = spl_token::instruction::mint_to(
+        &spl_token::id(),
+        mint_account.key,
+        receiver_account.key,
+        &pda,
+        &[&pda],
+        _value,
+    )?;
 
-    // let bump_ref = &[bump_seed];
-    // let pda_seeds = &[
-    //     mint_account.key.as_ref(),
-    //     b"WPOKT",
-    //     b"global_state_account",
-    //     bump_ref,
-    // ][..];
+    let bump_ref = &[bump_seed];
+    let pda_seeds = &[
+        mint_account.key.as_ref(),
+        b"WPOKT",
+        b"global_state_account",
+        bump_ref,
+    ][..];
 
-    // program::invoke_signed(
-    //     &mint_ix,
-    //     &[
-    //         mint_account.clone(),
-    //         receiver_account.clone(),
-    //         wpokt_account.clone(),
-    //         token_program_account.clone(),
-    //     ],
-    //     &[pda_seeds],
-    // )?;
+    program::invoke_signed(
+        &mint_ix,
+        &[
+            mint_account.clone(),
+            receiver_account.clone(),
+            wpokt_account.clone(),
+            token_program_account.clone(),
+        ],
+        &[pda_seeds],
+    )?;
     Ok(())
 }
 

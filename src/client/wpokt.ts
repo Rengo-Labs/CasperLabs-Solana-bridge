@@ -6,6 +6,8 @@ import {
 } from "./utils";
 import path from "path";
 import * as WPOKT from "./WPOKT/wpokt";
+import * as SPLToken from "@solana/spl-token";
+import assert from "assert";
 
 // program lib names
 const WPOKT_LIB_NAME = "wpokt";
@@ -76,6 +78,47 @@ async function wpoktTests(
   console.log(
     `TSX - wpoktTests(): ${WPOKT_LIB_NAME} Instruction::Construct Verified...`
   );
+
+  const receiverAccount = await SPLToken.createAccount(
+    connection,
+    payer,
+    mintAccount.publicKey,
+    payer.publicKey
+  );
+
+  
+  const mintAmount = 100;
+  await WPOKT.mint(
+    connection,
+    programId,
+    payer,
+    pdaAccount,
+    mintAccount.publicKey,
+    receiverAccount,
+    mintAmount
+  );
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} Instruction::MintOnlyMinter...`
+  );
+
+  // verify mint
+  const receiverData = await SPLToken.getAccount(connection, receiverAccount);
+  if (receiverData.amount !== BigInt(mintAmount)) {
+    throw Error(
+      `TSX - wpoktTests(): ${WPOKT_LIB_NAME} receiverData.amount !== BigInt(mintAmount)`
+    );
+  }
+
+  const mintData = await SPLToken.getMint(connection, mintAccount.publicKey);
+  if (mintData.supply !== BigInt(mintAmount)) {
+    throw Error(
+      `TSX - wpoktTests(): ${WPOKT_LIB_NAME} mintData.supply !== BigInt(mintAmount)`
+    );
+  }
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} Instruction::MintOnlyMinter Verified...`
+  );
+  
   return [PublicKey.default, Keypair.generate(), PublicKey.default];
 }
 

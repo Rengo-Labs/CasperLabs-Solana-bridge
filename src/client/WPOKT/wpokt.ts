@@ -109,7 +109,7 @@ export const construct = async (
 // ): Promise<string> => {
 //   // const buffers = ;
 //   const data = Buffer.concat([
-//     Buffer.from(Uint8Array.of(WPoktInstruction.WPoktInstruction.SetBridgeOnlyOwner)),
+//     Buffer.from(Uint8Array.of(WPOKTInstruction.WPOKTInstruction.SetBridgeOnlyOwner)),
 //     bridgePubkey.toBuffer(),
 //   ]);
 //   //  buffers.concat(wPoktPda.toBuffer());
@@ -125,39 +125,40 @@ export const construct = async (
 //   return await sendAndConfirmTransaction(connection, tx, [owner]);
 // };
 
-// export const mint = async (
-//   connection: Connection,
-//   programId: PublicKey,
-//   pdaAccount: PublicKey,
-//   mint: PublicKey,
-//   bridgeAccount: Keypair,
-//   receiverAccount: PublicKey,
-//   amount: number
-// ) => {
-//   let data = Buffer.alloc(9); // 1B Instruction, 9B amount
+export const mint = async (
+  connection: Connection,
+  programId: PublicKey,
+  minter: Keypair,
+  pdaAccount: PublicKey,
+  mint: PublicKey,
+  receiverAccount: PublicKey,
+  amount: number
+) => {
+  let data = Buffer.alloc(WPOKTInstruction.MINT_ONLY_MINTER_LAYOUT.span); // 1B Instruction,32B to, 8B amount
 
-//   const instructionDataLength = WPoktInstruction.W_POKT_MINT_INSTRUCTION_LAYOUT.encode(
-//     {
-//       instruction: WPoktInstruction.WPoktInstruction.MintOnlyBridge,
-//       amount,
-//     },
-//     data
-//   );
+  const instructionDataLength = WPOKTInstruction.MINT_ONLY_MINTER_LAYOUT.encode(
+    {
+      instruction: WPOKTInstruction.WPOKTInstruction.MintOnlyMinter,
+      to: receiverAccount,
+      value: amount
+    },
+    data
+  );
 
-//   const ix = new TransactionInstruction({
-//     programId,
-//     keys: [
-//       { pubkey: pdaAccount, isSigner: false, isWritable: false },
-//       { pubkey: bridgeAccount.publicKey, isSigner: true, isWritable: false },
-//       { pubkey: mint, isSigner: false, isWritable: true },
-//       { pubkey: receiverAccount, isSigner: false, isWritable: true },
-//       { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-//     ],
-//     data,
-//   });
-//   const tx = new Transaction().add(ix);
-//   return await sendAndConfirmTransaction(connection, tx, [bridgeAccount]);
-// };
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: minter.publicKey, isSigner: true, isWritable: false },
+      { pubkey: pdaAccount, isSigner: false, isWritable: false },
+      { pubkey: mint, isSigner: false, isWritable: true },
+      { pubkey: receiverAccount, isSigner: false, isWritable: true },
+      { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+  const tx = new Transaction().add(ix);
+  return await sendAndConfirmTransaction(connection, tx, [minter]);
+};
 
 // // export const verifyMintInstruction = async (connection: Connection, tokenAccount: PublicKey, balance: number)=>{
 // //     // get bridge token account, and check its balance
