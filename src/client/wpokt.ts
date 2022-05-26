@@ -1,4 +1,11 @@
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  sendAndConfirmTransaction,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
 import {
   checkOrDeployProgram,
   establishConnection,
@@ -86,7 +93,6 @@ async function wpoktTests(
     payer.publicKey
   );
 
-  
   const mintAmount = 100;
   await WPOKT.mint(
     connection,
@@ -109,7 +115,7 @@ async function wpoktTests(
     );
   }
 
-  const mintData = await SPLToken.getMint(connection, mintAccount.publicKey);
+  let mintData = await SPLToken.getMint(connection, mintAccount.publicKey);
   if (mintData.supply !== BigInt(mintAmount)) {
     throw Error(
       `TSX - wpoktTests(): ${WPOKT_LIB_NAME} mintData.supply !== BigInt(mintAmount)`
@@ -118,7 +124,46 @@ async function wpoktTests(
   console.log(
     `TSX - wpoktTests(): ${WPOKT_LIB_NAME} Instruction::MintOnlyMinter Verified...`
   );
-  
+
+  // create new minter account
+  const newMinter = Keypair.generate();
+  const createAccountIx = SystemProgram.createAccount({
+    programId: SystemProgram.programId,
+    space: 1,
+    lamports: await connection.getMinimumBalanceForRentExemption(1),
+    fromPubkey: payer.publicKey,
+    newAccountPubkey: newMinter.publicKey,
+  });
+  let tx = new Transaction().add(createAccountIx);
+  await sendAndConfirmTransaction(connection, tx, [payer, newMinter]);
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} newMinter account created at ${newMinter.publicKey.toBase58()}...`
+  );
+
+  await WPOKT.changeMinter(
+    connection,
+    programId,
+    payer,
+    newMinter.publicKey,
+    mintAccount.publicKey,
+    pdaAccount
+  );
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} Instruction::ChangeMinter...`
+  );
+
+  // get mint to verify minter change
+  // TODO verify minter change in PDA Account
+  mintData = await SPLToken.getMint(connection, mintAccount.publicKey);
+  if (!mintData.mintAuthority?.equals(newMinter.publicKey)) {
+    throw Error(
+      `TSX - wpoktTests(): ${WPOKT_LIB_NAME} mintData.mintAuthority? !== newMinter.publicKey`
+    );
+  }
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} Instruction::ChangeMinter Verified...`
+  );
+
   return [PublicKey.default, Keypair.generate(), PublicKey.default];
 }
 

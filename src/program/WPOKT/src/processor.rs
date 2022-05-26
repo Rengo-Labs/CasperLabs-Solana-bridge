@@ -1,19 +1,18 @@
 use crate::error::WPOKTError;
 use crate::instruction::WPOKTInstruction;
-use crate::state::{WPOKT};
+use crate::state::WPOKT;
 
-use borsh::{BorshDeserialize};
+use borsh::BorshDeserialize;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program,
+    msg, program,
     program_error::ProgramError,
     program_pack::Pack,
     pubkey::Pubkey,
     rent::Rent,
     system_instruction,
     sysvar::Sysvar,
-    msg
 };
 
 use spl_token;
@@ -33,8 +32,12 @@ impl Processor {
                 msg!("WPOKTInstruction::Construct");
                 construct(program_id, accounts, &initial_minter)
             }
-            WPOKTInstruction::MintOnlyMinter { to, value } => mint(program_id, accounts, to, value),
+            WPOKTInstruction::MintOnlyMinter { to, value } => {
+                msg!("WPOKTInstruction::MintOnlyMinter");
+                mint(program_id, accounts, to, value)
+            }
             WPOKTInstruction::ChangeMinterOnlyMinter { new_minter } => {
+                msg!("WPOKTInstruction::ChangeMinterOnlyMinter");
                 change_minter(program_id, accounts, new_minter)
             }
             WPOKTInstruction::Permit {
@@ -220,61 +223,68 @@ fn change_minter(
     _accounts: &[AccountInfo],
     _new_minter: Pubkey,
 ) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let minter = next_account_info(account_info_iter)?; // signer and payer
-    // let wpokt_account = next_account_info(account_info_iter)?;
-    // let mint_account = next_account_info(account_info_iter)?;
-    // let token_program_account = next_account_info(account_info_iter)?;
-    // let new_mint_authority_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let minter = next_account_info(account_info_iter)?; // signer and payer
+    let wpokt_account = next_account_info(account_info_iter)?; // PDA account
+    let mint_account = next_account_info(account_info_iter)?;
+    let token_program_account = next_account_info(account_info_iter)?;
+    let new_mint_authority_account = next_account_info(account_info_iter)?;
 
-    // let (pda, bump_seed) = generate_wpokt_pda(_program_id, mint_account.key);
+    let (pda, bump_seed) = generate_wpokt_pda(_program_id, mint_account.key);
 
-    // // onlyOwner
-    // if !minter.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    // onlyOwner
+    if !minter.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // if !wpokt_account.key.eq(&pda) {
-    //     return Err(ProgramError::InvalidInstructionData);
-    // }
+    if !wpokt_account.key.eq(&pda) {
+        return Err(ProgramError::Custom(WPOKTError::WPOKTPdaMismatch as u32));
+    }
 
-    // let mut wpokt_data = WPOKT::unpack_from_slice(&wpokt_account.data.borrow())?;
-    // if !wpokt_data.is_initialized {
-    //     return Err(ProgramError::UninitializedAccount);
-    // }
-    // if *minter.key != wpokt_data.minter || *new_mint_authority_account.key != _new_minter {
-    //     return Err(ProgramError::InvalidInstructionData);
-    // }
+    let mut wpokt_data = WPOKT::unpack_from_slice(&wpokt_account.data.borrow())?;
+    if !wpokt_data.is_initialized {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if !minter.key.eq(&wpokt_data.minter) {
+        return Err(ProgramError::Custom(WPOKTError::InvalidMinter as u32));
+    }
 
-    // let change_mint_auth_ix = spl_token::instruction::set_authority(
-    //     &spl_token::id(),
-    //     mint_account.key,
-    //     Some(new_mint_authority_account.key),
-    //     spl_token::instruction::AuthorityType::MintTokens,
-    //     &pda,
-    //     &[&pda],
-    // )?;
+    if *new_mint_authority_account.key != _new_minter {
+        return Err(ProgramError::Custom(
+            WPOKTError::NewMinterPubkeyMismatch as u32,
+        ));
+    }
+
+    let change_mint_auth_ix = spl_token::instruction::set_authority(
+        &spl_token::id(),
+        mint_account.key,
+        Some(new_mint_authority_account.key),
+        spl_token::instruction::AuthorityType::MintTokens,
+        &pda,
+        &[&pda],
+    )?;
 
     // let bump_ref = &[bump_seed];
-    // let pda_seeds = &[
-    //     mint_account.key.as_ref(),
-    //     b"WPOKT",
-    //     b"global_state_account",
-    //     bump_ref,
-    // ][..];
+    let pda_seeds = &[
+        mint_account.key.as_ref(), 
+        b"WPOKT", 
+        b"global_state_account",
+        &[bump_seed],
+    ];
 
-    // program::invoke_signed(
-    //     &change_mint_auth_ix,
-    //     &[
-    //         mint_account.clone(),
-    //         new_mint_authority_account.clone(),
-    //         token_program_account.clone(),
-    //     ],
-    //     &[pda_seeds],
-    // )?;
+    program::invoke_signed(
+        &change_mint_auth_ix,
+        &[
+            wpokt_account.clone(),
+            mint_account.clone(),
+            new_mint_authority_account.clone(),
+            token_program_account.clone(),
+        ],
+        &[pda_seeds],
+    )?;
 
-    // wpokt_data.minter = *new_mint_authority_account.key;
-    // wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
+    wpokt_data.minter = *new_mint_authority_account.key;
+    wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
     Ok(())
 }
 

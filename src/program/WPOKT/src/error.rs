@@ -16,6 +16,8 @@ pub enum WPOKTError {
     InitialMinterPubkeyMismatch,
     #[error("wPOKT:WPOKT_PDA_MISMATCH")]
     WPOKTPdaMismatch,
+    #[error("wPOKT:NEW_MINTER_PUBKEY_MISMATCH")]
+    NewMinterPubkeyMismatch,
 }
 
 impl From<WPOKTError> for ProgramError {

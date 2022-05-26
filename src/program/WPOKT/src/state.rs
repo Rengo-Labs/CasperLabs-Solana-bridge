@@ -82,9 +82,7 @@ impl Pack for NoncesDictionary {
     // for serialization
     fn pack_into_slice(&self, dst: &mut [u8]) {
         let dst = array_mut_ref![dst, 0, NoncesDictionary::LEN];
-        let NoncesDictionary{
-            nonce
-        } = self;
+        let NoncesDictionary { nonce } = self;
         *dst = nonce.to_le_bytes();
     }
 }

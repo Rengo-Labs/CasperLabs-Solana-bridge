@@ -15,6 +15,7 @@ import * as splToken from "@solana/spl-token";
 import * as WPOKTState from "./state";
 import { verifyMint } from "../utils";
 import * as WPOKTInstruction from "./instructions";
+import { Key } from "readline";
 
 // returns the WPOKT PDA
 export const wpoktPdaKeypair = async (
@@ -93,37 +94,12 @@ export const construct = async (
       { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: initialMinter, isSigner: false, isWritable: false },
     ],
-    data
+    data,
   });
 
   const tx = new Transaction().add(ix);
   return await sendAndConfirmTransaction(connection, tx, [payer]);
 };
-
-// export const setBridge = async (
-//   connection: Connection,
-//   programId: PublicKey,
-//   owner: Keypair,
-//   wPoktPda: PublicKey,
-//   bridgePubkey: PublicKey
-// ): Promise<string> => {
-//   // const buffers = ;
-//   const data = Buffer.concat([
-//     Buffer.from(Uint8Array.of(WPOKTInstruction.WPOKTInstruction.SetBridgeOnlyOwner)),
-//     bridgePubkey.toBuffer(),
-//   ]);
-//   //  buffers.concat(wPoktPda.toBuffer());
-//   const ix = new TransactionInstruction({
-//     programId,
-//     keys: [
-//       { pubkey: owner.publicKey, isSigner: true, isWritable: true },
-//       { pubkey: wPoktPda, isSigner: false, isWritable: true },
-//     ],
-//     data,
-//   });
-//   const tx = new Transaction().add(ix);
-//   return await sendAndConfirmTransaction(connection, tx, [owner]);
-// };
 
 export const mint = async (
   connection: Connection,
@@ -140,7 +116,7 @@ export const mint = async (
     {
       instruction: WPOKTInstruction.WPOKTInstruction.MintOnlyMinter,
       to: receiverAccount,
-      value: amount
+      value: amount,
     },
     data
   );
@@ -160,10 +136,42 @@ export const mint = async (
   return await sendAndConfirmTransaction(connection, tx, [minter]);
 };
 
-// // export const verifyMintInstruction = async (connection: Connection, tokenAccount: PublicKey, balance: number)=>{
-// //     // get bridge token account, and check its balance
+export const changeMinter = async (
+  connection: Connection,
+  programId: PublicKey,
+  currentMinter: Keypair,
+  newMinter: PublicKey,
+  mint: PublicKey,
+  wpoktPda: PublicKey
+) => {
+  const data = Buffer.alloc(
+    WPOKTInstruction.CHANGE_MINTER_ONLY_MINTER_LAYOUT.span
+  );
 
-// }
+  WPOKTInstruction.CHANGE_MINTER_ONLY_MINTER_LAYOUT.encode(
+    {
+      instruction: WPOKTInstruction.WPOKTInstruction.ChangeMinterOnlyMinter,
+      newMinter,
+    },
+    data
+  );
+
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: currentMinter.publicKey, isSigner: true, isWritable: false },
+      { pubkey: wpoktPda, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: true },
+      { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: newMinter, isSigner: false, isWritable: true },
+    ],
+    data,
+  });
+
+  const tx = new Transaction().add(ix);
+  return await sendAndConfirmTransaction(connection, tx, [currentMinter]);
+};
+
 /**
  * Verifies all required accounts were created and have the correct initial states
  * @param connection the rpc connection instance
@@ -231,15 +239,11 @@ export const verifyWPOKTPda = async (
   }
 
   if (!minter.equals(wpokt.minter)) {
-    throw Error(
-      `TSX verifyWPOKTPda(): Invalid Minter at ${wpokt.minter}`
-    );
+    throw Error(`TSX verifyWPOKTPda(): Invalid Minter at ${wpokt.minter}`);
   }
 
   if (!mint.equals(wpokt.mint)) {
-    throw Error(
-      `TSX verifyWPOKTPda(): WPOKT PDA Account Mint Uninitialized`
-    );
+    throw Error(`TSX verifyWPOKTPda(): WPOKT PDA Account Mint Uninitialized`);
   }
 };
 
@@ -250,14 +254,10 @@ export const verifyConstruction = async (
   wpokt: PublicKey,
   mint: PublicKey
 ) => {
- 
   // TODO cant decode WPOKT struct
   // await verifyWPOKTPda(connection, programId, minter, mint, wpokt, true);
   // get and decode mint
-  const wpoktMintData = await splToken.getMint(
-    connection,
-    mint,
-  );
+  const wpoktMintData = await splToken.getMint(connection, mint);
   await verifyMint(wpoktMintData, true, wpokt, 0);
 };
 
