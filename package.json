@@ -3,14 +3,17 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
+    "deploy:wpokt": "solana program deploy target/deploy/wpokt.so",
     "deploy:w_pokt": "solana program deploy target/deploy/w_pokt.so",
+    "start-client:wpokt": "npm run deploy:wpokt && ts-node src/client/wpokt.ts",
     "start-client:w_pokt": "npm run deploy:w_pokt && ts-node src/client/w_pokt.ts",
+    "test-client:wpokt": "start-server-and-test 'solana-test-validator --reset --quiet' http://localhost:8899/health start-client:wpokt",
     "test-client:w_pokt": "start-server-and-test 'solana-test-validator --reset --quiet' http://localhost:8899/health start-client:w_pokt",
     "test-host:program": "cargo test-bpf --manifest-path=./Cargo.toml",
     "build:program": "cargo build-bpf --manifest-path=./Cargo.toml",
     "clean:program": "cargo clean --manifest-path=./Cargo.toml && rm -rf ./build",
     "fmt:program": "cargo fmt --manifest-path=./Cargo.toml --all",
-    "test": "npm run build:program && npm run start-client:w_pokt"
+    "test": "npm run build:program && npm run start-client:wpokt"
   },
   "repository": {
     "type": "git",

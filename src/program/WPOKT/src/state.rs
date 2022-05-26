@@ -1,4 +1,3 @@
-use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     program_error::ProgramError,
     program_pack::{IsInitialized, Pack, Sealed},
@@ -7,7 +6,7 @@ use solana_program::{
 
 use arrayref::*;
 
-#[derive(BorshDeserialize, BorshSerialize, Default, Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct WPOKT {
     pub is_initialized: bool,
     pub minter: Pubkey,
@@ -58,7 +57,7 @@ impl Pack for WPOKT {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Default, Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct NoncesDictionary {
     pub nonce: u64,
 }
@@ -90,7 +89,7 @@ impl Pack for NoncesDictionary {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Default, Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct AuthorizationStateDictionary {
     authorization: bool,
 }

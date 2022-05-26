@@ -1,8 +1,8 @@
 use crate::error::WPOKTError;
 use crate::instruction::WPOKTInstruction;
-use crate::state::{AuthorizationStateDictionary, NoncesDictionary, WPOKT};
+use crate::state::{WPOKT};
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -13,6 +13,7 @@ use solana_program::{
     rent::Rent,
     system_instruction,
     sysvar::Sysvar,
+    msg
 };
 
 use spl_token;
@@ -29,6 +30,7 @@ impl Processor {
             .map_err(|_| ProgramError::InvalidInstructionData)?;
         match instruction {
             WPOKTInstruction::Construct { initial_minter } => {
+                msg!("WPOKTInstruction::Construct");
                 construct(program_id, accounts, &initial_minter)
             }
             WPOKTInstruction::MintOnlyMinter { to, value } => mint(program_id, accounts, to, value),
@@ -70,15 +72,11 @@ fn construct(
     let account_info_iter = &mut _accounts.iter();
     let payer = next_account_info(account_info_iter)?; // person paying for this and further instructions
     let mint_account = next_account_info(account_info_iter)?;
-    let wpokt_account = next_account_info(account_info_iter)?;
+    let wpokt_account = next_account_info(account_info_iter)?; // PDA account
     let rent_sysvar_account = next_account_info(account_info_iter)?;
     let system_account = next_account_info(account_info_iter)?;
     let token_program_account = next_account_info(account_info_iter)?;
     let initial_minter_account = next_account_info(account_info_iter)?;
-
-    if *wpokt_account.owner != *_program_id {
-        return Err(ProgramError::IllegalOwner);
-    }
 
     if !initial_minter_account.key.eq(_initial_minter) {
         return Err(ProgramError::Custom(
@@ -98,8 +96,8 @@ fn construct(
     let create_pda_acc_ix = system_instruction::create_account(
         payer.key,
         wpokt_account.key,
-        rent_sysvar.minimum_balance(mem::size_of::<WPOKT>()),
-        mem::size_of::<WPOKT>().try_into().unwrap(),
+        rent_sysvar.minimum_balance(WPOKT::LEN),
+        WPOKT::LEN.try_into().unwrap(),
         _program_id,
     );
 
@@ -135,7 +133,7 @@ fn construct(
         ],
     )?;
 
-    let mut wpokt_data = WPOKT::try_from_slice(&wpokt_account.data.borrow())?;
+    let mut wpokt_data = WPOKT::unpack_from_slice(&wpokt_account.data.borrow())?;
     if wpokt_data.is_initialized {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
