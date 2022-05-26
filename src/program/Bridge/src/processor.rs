@@ -137,7 +137,7 @@ fn construct(
     let token_added_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
 
-    let pda_seeds :&[&[u8]] = &[b"bridge", b"signature_acc"];
+    let pda_seeds: &[&[u8]] = &[b"bridge", b"signature_acc"];
     let (pda, bump) = Pubkey::find_program_address(pda_seeds, _program_id);
 
     if !owner_account.is_signer {
@@ -365,9 +365,9 @@ fn transfer_receipt(
     let receiver_token_account = next_account_info(account_info_iter)?;
 
     let pda_seeds: &[&[u8]] = &[b"bridge", b"global_state_account"];
-    let (pda, bump)= Pubkey::find_program_address(pda_seeds, _program_id);
+    let (pda, bump) = Pubkey::find_program_address(pda_seeds, _program_id);
 
-    if !bridge_account.key.eq(&pda){
+    if !bridge_account.key.eq(&pda) {
         return Err(ProgramError::InvalidInstructionData);
     }
 
@@ -733,7 +733,7 @@ fn withdraw_fees(_program_id: &Pubkey, _accounts: &[AccountInfo], _index: u64) -
     let token_list_account = next_account_info(account_info_iter)?;
 
     let pda_seeds: &[&[u8]] = &[b"bridge", b"global_state_account"];
-    let (pda, bump)= Pubkey::find_program_address(pda_seeds, _program_id);
+    let (pda, bump) = Pubkey::find_program_address(pda_seeds, _program_id);
 
     verify_program_accounts_ownership(&_program_id, _accounts[1..3].as_ref())?;
 
@@ -763,7 +763,6 @@ fn withdraw_fees(_program_id: &Pubkey, _accounts: &[AccountInfo], _index: u64) -
     }
 
     let mint_data = spl_token::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
-
 
     let pda_seeds: &[&[u8]] = &[b"bridge", b"global_state_account", &[bump]];
 

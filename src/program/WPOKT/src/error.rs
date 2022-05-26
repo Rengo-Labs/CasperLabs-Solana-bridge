@@ -12,6 +12,10 @@ pub enum WPOKTError {
     AuthAlreadyUsed,
     #[error("wPOKT:INVALID_MINTER")]
     InvalidMinter,
+    #[error("wPOKT:INITIAL_MINTER_PUBKEY_MISMATCH")]
+    InitialMinterPubkeyMismatch,
+    #[error("wPOKT:WPOKT_PDA_MISMATCH")]
+    WPOKTPdaMismatch,
 }
 
 impl From<WPOKTError> for ProgramError {
