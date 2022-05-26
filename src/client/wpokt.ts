@@ -164,6 +164,32 @@ async function wpoktTests(
     `TSX - wpoktTests(): ${WPOKT_LIB_NAME} Instruction::ChangeMinter Verified...`
   );
 
+  // // create delegate token account, owner is payer
+  // let delegateToken = SPLToken.createAccount(connection, payer, mintAccount.publicKey, payer.publicKey);
+
+  // // creating the Nonces PDA Key account
+  // let [noncesAccount, bump] = await WPOKT.generateNonceDictionaryKey(programId, receiverAccount);
+  //   // TODO create NoncePDA account on chain only as its a pda
+  // // SystemProgram.createAccountWithSeed({
+
+  // // });
+
+  // let createNoncesPdaIx = SystemProgram.createAccount({
+  //   programId: SystemProgram.programId,
+  //   space: 1,
+  //   lamports: await connection.getMinimumBalanceForRentExemption(1),
+  //   fromPubkey: payer.publicKey,
+  //   newAccountPubkey: noncesAccount,
+  // });
+  // tx = new Transaction().add(createNoncesPdaIx);
+  // await sendAndConfirmTransaction(connection, tx, [payer]);
+
+  // console.log(
+  //   `TSX - wpoktTests(): ${WPOKT_LIB_NAME} newMinter account created at ${newMinter.publicKey.toBase58()}...`
+  // );
+  // NOTE reusing receiverAccount for source token, having being minted to.
+  // await WPOKT.permit(connection)
+  // cerate source token auth nonces account
   return [PublicKey.default, Keypair.generate(), PublicKey.default];
 }
 

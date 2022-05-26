@@ -1,10 +1,11 @@
 use crate::error::WPOKTError;
 use crate::instruction::WPOKTInstruction;
-use crate::state::WPOKT;
+use crate::state::{NoncesDictionary, WPOKT};
 
 use borsh::BorshDeserialize;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
+    clock::Clock,
     entrypoint::ProgramResult,
     msg, program,
     program_error::ProgramError,
@@ -16,7 +17,7 @@ use solana_program::{
 };
 
 use spl_token;
-use std::mem;
+// use std::mem;
 
 pub struct Processor {}
 impl Processor {
@@ -266,8 +267,8 @@ fn change_minter(
 
     // let bump_ref = &[bump_seed];
     let pda_seeds = &[
-        mint_account.key.as_ref(), 
-        b"WPOKT", 
+        mint_account.key.as_ref(),
+        b"WPOKT",
         b"global_state_account",
         &[bump_seed],
     ];
@@ -296,50 +297,63 @@ fn permit(
     value: u64,
     deadline: u64,
 ) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let src_token_account_owner = next_account_info(account_info_iter)?; //signer signed this offline
-    // let nonces_account = next_account_info(account_info_iter)?;
-    // let src_token_account = next_account_info(account_info_iter)?;
-    // let delegate_token_account = next_account_info(account_info_iter)?;
-    // let token_program_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let src_token_account_owner = next_account_info(account_info_iter)?; //signer signed this offline
+    let nonces_account = next_account_info(account_info_iter)?;
+    let src_token_account = next_account_info(account_info_iter)?;
+    let delegate_token_account = next_account_info(account_info_iter)?;
+    let token_program_account = next_account_info(account_info_iter)?;
+    let clock_sysvar_account = next_account_info(account_info_iter)?;
+    let clock = Clock::from_account_info(clock_sysvar_account)?;
 
-    // if *delegate_token_account.key != spender {
-    //     return Err(ProgramError::InvalidInstructionData);
-    // }
-    // let clock = Clock::get()?;
-    // let current_timestamp = clock.unix_timestamp as u64;
+    if *delegate_token_account.key != spender {
+        return Err(ProgramError::Custom(
+            WPOKTError::DelegateSpenderMismatch as u32,
+        ));
+    }
 
-    // if deadline >= current_timestamp {
-    //     return Err(ProgramError::Custom(WPOKTError::AuthExpired as u32));
-    // }
+    if !src_token_account_owner.key.eq(&owner) {
+        return Err(ProgramError::Custom(
+            WPOKTError::TokenAuthorityMismatch as u32,
+        ));
+    }
 
-    // let mut nonces_data = NoncesDictionary::unpack_from_slice(&nonces_account.data.borrow())?;
-    // let current_nonce = nonces_data.nonces_dictionary.get_mut(&owner).unwrap();
-    // *current_nonce += 1;
+    let current_timestamp: u64 = clock.unix_timestamp.try_into().unwrap();
+    if deadline >= current_timestamp {
+        return Err(ProgramError::Custom(WPOKTError::AuthExpired as u32));
+    }
 
-    // nonces_data.pack_into_slice(&mut &mut nonces_account.data.borrow_mut()[..]);
+    let (nonce_pda, _) =
+        NoncesDictionary::generate_pda_key(*_program_id, *src_token_account_owner.key);
+    if !nonces_account.key.eq(&nonce_pda) {
+        return Err(ProgramError::Custom(
+            WPOKTError::NoncesDictionaryItemKeyMismatch as u32,
+        ));
+    }
 
-    // let approve_ix = spl_token::instruction::approve(
-    //     &spl_token::id(),
-    //     src_token_account.key,
-    //     delegate_token_account.key,
-    //     src_token_account_owner.key,
-    //     &[
-    //         &src_token_account.key,
-    //         &delegate_token_account.key,
-    //         &src_token_account_owner.key,
-    //     ],
-    //     value,
-    // )?;
-    // program::invoke(
-    //     &approve_ix,
-    //     &[
-    //         src_token_account.clone(),
-    //         delegate_token_account.clone(),
-    //         src_token_account_owner.clone(),
-    //         token_program_account.clone(),
-    //     ],
-    // )?;
+    // update nonce
+    let mut nonces_data = NoncesDictionary::unpack_from_slice(&nonces_account.data.borrow())?;
+    nonces_data.nonce += 1;
+    nonces_data.pack_into_slice(&mut &mut nonces_account.data.borrow_mut()[..]);
+
+    let approve_ix = spl_token::instruction::approve(
+        &spl_token::id(),
+        src_token_account.key,
+        delegate_token_account.key,
+        src_token_account_owner.key,
+        &[src_token_account_owner.key],
+        value,
+    )?;
+
+    program::invoke(
+        &approve_ix,
+        &[
+            src_token_account.clone(),
+            delegate_token_account.clone(),
+            src_token_account_owner.clone(),
+            token_program_account.clone(),
+        ],
+    )?;
     Ok(())
 }
 

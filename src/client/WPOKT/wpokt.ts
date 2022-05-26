@@ -10,12 +10,30 @@ import {
   Transaction,
   sendAndConfirmTransaction,
   SYSVAR_RENT_PUBKEY,
+  SYSVAR_CLOCK_PUBKEY,
 } from "@solana/web3.js";
 import * as splToken from "@solana/spl-token";
 import * as WPOKTState from "./state";
 import { verifyMint } from "../utils";
 import * as WPOKTInstruction from "./instructions";
 import { Key } from "readline";
+
+export const generateNonceDictionaryKey = async (
+  programId: PublicKey,
+  owner: PublicKey
+): Promise<[PublicKey, number]> => {
+  let seeds: Uint8Array[] = [
+    owner.toBytes(),
+    Buffer.from("nonces"),
+    Buffer.from("dictionary"),
+    Buffer.from("key"),
+  ];
+  const [nonces_key, seedBump] = await PublicKey.findProgramAddress(
+    seeds,
+    programId
+  );
+  return [nonces_key, seedBump];
+};
 
 // returns the WPOKT PDA
 export const wpoktPdaKeypair = async (
@@ -170,6 +188,65 @@ export const changeMinter = async (
 
   const tx = new Transaction().add(ix);
   return await sendAndConfirmTransaction(connection, tx, [currentMinter]);
+};
+
+/**
+ *
+ * @param connection
+ * @param programId
+ * @param sourceToken
+ * @param sourceTokenAuthority
+ * @param mint
+ * @param delegate
+ */
+export const permit = async (
+  connection: Connection,
+  programId: PublicKey,
+  sourceToken: PublicKey,
+  sourceTokenAuthority: Keypair,
+  mint: PublicKey,
+  delegateToken: PublicKey,
+  amount: number,
+  deadline: number
+) => {
+  const data = Buffer.alloc(WPOKTInstruction.PERMIT_LAYOUT.span);
+  const [nonceKey, bump] = await generateNonceDictionaryKey(
+    programId,
+    sourceTokenAuthority.publicKey
+  );
+
+  WPOKTInstruction.PERMIT_LAYOUT.encode(
+    {
+      instruction: WPOKTInstruction.WPOKTInstruction.Permit,
+      owner: sourceTokenAuthority.publicKey,
+      spender: delegateToken,
+      value: amount,
+      deadline,
+    },
+    data
+  );
+
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      {
+        pubkey: sourceTokenAuthority.publicKey,
+        isSigner: true,
+        isWritable: false,
+      },
+      { pubkey: nonceKey, isSigner: false, isWritable: true },
+      { pubkey: sourceToken, isSigner: false, isWritable: true },
+      { pubkey: delegateToken, isSigner: false, isWritable: true },
+      { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+
+  const tx = new Transaction().add(ix);
+  return await sendAndConfirmTransaction(connection, tx, [
+    sourceTokenAuthority,
+  ]);
 };
 
 /**

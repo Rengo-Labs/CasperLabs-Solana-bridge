@@ -18,6 +18,12 @@ pub enum WPOKTError {
     WPOKTPdaMismatch,
     #[error("wPOKT:NEW_MINTER_PUBKEY_MISMATCH")]
     NewMinterPubkeyMismatch,
+    #[error("wPOKT:DELEGATE_SPENDER_MISMATCH")]
+    DelegateSpenderMismatch,
+    #[error("wPOKT:TOKEN_AUTHORITY_MISMATCH")]
+    TokenAuthorityMismatch,
+    #[error("wPOKT:NONCES_DICTIONARY_ITEM_KEY_MISMATCH")]
+    NoncesDictionaryItemKeyMismatch,
 }
 
 impl From<WPOKTError> for ProgramError {
