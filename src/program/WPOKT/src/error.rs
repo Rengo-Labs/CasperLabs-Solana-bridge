@@ -24,6 +24,8 @@ pub enum WPOKTError {
     TokenAuthorityMismatch,
     #[error("wPOKT:NONCES_DICTIONARY_ITEM_KEY_MISMATCH")]
     NoncesDictionaryItemKeyMismatch,
+    #[error("wPOKT:NONCES_DICTIONARY_OWNER_KEY_MISMATCH")]
+    NoncesDictionaryItemOwnerMismatch,
 }
 
 impl From<WPOKTError> for ProgramError {

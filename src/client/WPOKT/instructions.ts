@@ -31,6 +31,10 @@ export enum WPOKTInstruction {
   ///   3. `[signer]` The source token account owner.
   ///   3. `[writable]` The destination token account.
   TransferWithAuthorization,
+  ///   0. `[writable]` The NoncesDictionary PDA account
+  InitializeNoncePdaAccount,
+  ///   0. `[writable]` The AuthorizationState PDA account
+  InitializeAuthorizationStatePdaAccount,
 }
 
 export interface Construct {
@@ -102,4 +106,28 @@ export const TRANSFER_WITH_AUTHORIZATION_LAYOUT: BufferLayout.Layout<TransferWit
     BufferLayout.nu64("validAfter"),
     BufferLayout.nu64("validBefore"),
     BufferLayout.cstr("nonce"),
+  ]);
+
+export interface InitializeNoncePdaAccount {
+  instruction: number;
+  owner: PublicKey;
+}
+
+export const INITIALIZE_NONCE_PDA_ACCOUNT_LAYOUT =
+  BufferLayout.struct<InitializeNoncePdaAccount>([
+    BufferLayout.u8("instruction"),
+    BufferLayoutUtils.publicKey("owner"),
+  ]);
+
+export interface InitializeAuthorizationStatePdaAccount {
+  instruction: number;
+  from: PublicKey;
+  nonce: Uint8Array;
+}
+
+export const INITIALIZE_AUTHORIZATION_STATE_PDA_ACCOUNT_LAYOUT =
+  BufferLayout.struct<InitializeAuthorizationStatePdaAccount>([
+    BufferLayout.u8("instruction"),
+    BufferLayoutUtils.publicKey("from"),
+    BufferLayout.blob(32, "nonce"),
   ]);

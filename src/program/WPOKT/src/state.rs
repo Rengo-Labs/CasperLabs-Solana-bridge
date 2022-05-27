@@ -59,12 +59,14 @@ impl Pack for WPOKT {
 
 #[derive(Default, Debug, Clone)]
 pub struct NoncesDictionary {
+    pub owner: Pubkey,
     pub nonce: u64,
 }
+
 impl NoncesDictionary {
     pub fn generate_pda_key(program_id: Pubkey, address: Pubkey) -> (Pubkey, u8) {
         Pubkey::find_program_address(
-            &[address.as_ref(), b"nonces", b"dictionary", b"key"],
+            &[address.as_ref(), b"WPOKT", b"nonces_dictionary_key"],
             &program_id,
         )
     }
@@ -72,43 +74,62 @@ impl NoncesDictionary {
 
 impl Sealed for NoncesDictionary {}
 impl Pack for NoncesDictionary {
-    const LEN: usize = 8;
+    const LEN: usize = 32 + 8;
 
     // for deserialization
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
         let src = array_ref![src, 0, NoncesDictionary::LEN];
+        let (owner_src, nonce_src) = array_refs![src, 32, 8];
         Ok(Self {
-            nonce: u64::from_le_bytes(*src),
+            owner: Pubkey::new_from_array(*owner_src),
+            nonce: u64::from_le_bytes(*nonce_src),
         })
     }
 
     // for serialization
     fn pack_into_slice(&self, dst: &mut [u8]) {
         let dst = array_mut_ref![dst, 0, NoncesDictionary::LEN];
-        let NoncesDictionary { nonce } = self;
-        *dst = nonce.to_le_bytes();
+        let (owner_dst, nonce_dst) = mut_array_refs![dst, 32, 8];
+        let NoncesDictionary { owner, nonce } = self;
+
+        owner_dst.copy_from_slice(owner.as_ref());
+        *nonce_dst = nonce.to_le_bytes();
     }
 }
 
 #[derive(Default, Debug, Clone)]
 pub struct AuthorizationStateDictionary {
-    authorization: bool,
+    pub from: Pubkey,
+    pub nonce: [u8; 32],
+    pub authorization: bool,
 }
+
 impl AuthorizationStateDictionary {
-    pub fn generate_pda_key(program_id: Pubkey, from: Pubkey, nonce: String) -> (Pubkey, u8) {
-        Pubkey::find_program_address(&[from.as_ref(), nonce.as_ref()], &program_id)
+    pub fn generate_pda_key(program_id: Pubkey, from: Pubkey, nonce: [u8; 32]) -> (Pubkey, u8) {
+        Pubkey::find_program_address(
+            &[
+                from.as_ref(),
+                nonce.as_ref(),
+                b"WPOKT",
+                b"authorization_dictionary_key",
+            ],
+            &program_id,
+        )
     }
 }
 
 impl Sealed for AuthorizationStateDictionary {}
 impl Pack for AuthorizationStateDictionary {
-    const LEN: usize = 1;
+    const LEN: usize = 32 + 32 + 1;
 
     // for deserialization
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
         let src = array_ref![src, 0, AuthorizationStateDictionary::LEN];
+        let (from_src, nonce_src, authorization_src) = array_refs![src, 32, 32, 1];
         Ok(Self {
-            authorization: match src {
+            from: Pubkey::new_from_array(*from_src),
+            nonce: *nonce_src,
+            authorization: match authorization_src {
                 [0] => false,
                 [1] => true,
                 _ => return Err(ProgramError::InvalidAccountData),
@@ -119,7 +140,15 @@ impl Pack for AuthorizationStateDictionary {
     // for serialization
     fn pack_into_slice(&self, dst: &mut [u8]) {
         let dst = array_mut_ref![dst, 0, AuthorizationStateDictionary::LEN];
-        let AuthorizationStateDictionary { authorization } = self;
-        dst[0] = *authorization as u8;
+        let (from_dst, nonce_dst, authorization_dst) = mut_array_refs![dst, 32, 32, 1];
+
+        let AuthorizationStateDictionary {
+            from,
+            nonce,
+            authorization,
+        } = self;
+        from_dst.copy_from_slice(from.as_ref());
+        nonce_dst.copy_from_slice(nonce.as_ref());
+        authorization_dst[0] = *authorization as u8;
     }
 }

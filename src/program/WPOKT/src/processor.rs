@@ -1,6 +1,6 @@
 use crate::error::WPOKTError;
 use crate::instruction::WPOKTInstruction;
-use crate::state::{NoncesDictionary, WPOKT};
+use crate::state::{AuthorizationStateDictionary, NoncesDictionary, WPOKT};
 
 use borsh::BorshDeserialize;
 use solana_program::{
@@ -17,7 +17,6 @@ use solana_program::{
 };
 
 use spl_token;
-// use std::mem;
 
 pub struct Processor {}
 impl Processor {
@@ -64,6 +63,14 @@ impl Processor {
                 valid_before,
                 nonce,
             ),
+            WPOKTInstruction::InitializeNoncePdaAccount { owner } => {
+                msg!("WPOKTInstruction::InitializeNoncePdaAccount");
+                initialize_nonce_pda_account(program_id, accounts, &owner)
+            }
+            WPOKTInstruction::InitializeAuthorizationStatePdaAccount { from, nonce } => {
+                msg!("WPOKTInstruction::InitializeAuthorizationStatePdaAccount");
+                initialize_authorization_state_pda_account(program_id, accounts, &from, &nonce)
+            }
         }
     }
 }
@@ -325,6 +332,11 @@ fn permit(
 
     let (nonce_pda, _) =
         NoncesDictionary::generate_pda_key(*_program_id, *src_token_account_owner.key);
+
+    if !nonces_account.owner.eq(_program_id) {
+        return Err(ProgramError::IllegalOwner);
+    }
+
     if !nonces_account.key.eq(&nonce_pda) {
         return Err(ProgramError::Custom(
             WPOKTError::NoncesDictionaryItemKeyMismatch as u32,
@@ -333,6 +345,11 @@ fn permit(
 
     // update nonce
     let mut nonces_data = NoncesDictionary::unpack_from_slice(&nonces_account.data.borrow())?;
+    if !nonces_data.owner.eq(&owner) {
+        return Err(ProgramError::Custom(
+            WPOKTError::NoncesDictionaryItemOwnerMismatch as u32,
+        ));
+    }
     nonces_data.nonce += 1;
     nonces_data.pack_into_slice(&mut &mut nonces_account.data.borrow_mut()[..]);
 
@@ -428,6 +445,125 @@ fn transfer_with_authorization(
     Ok(())
 }
 
+fn initialize_nonce_pda_account(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _owner: &Pubkey,
+) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let owner = next_account_info(account_info_iter)?; // the owner and payer
+    let nonce_account = next_account_info(account_info_iter)?; // the PDA Nonce account to create
+    let rent_sysvar_account = next_account_info(account_info_iter)?; // WPOKT Mint account for PDA generation
+    let system_account = next_account_info(account_info_iter)?; // WPOKT Mint account for PDA generation
+
+    if !owner.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    if !owner.key.eq(_owner) {
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    let rent_sysvar = Rent::from_account_info(rent_sysvar_account)?;
+    let (nonce_pda, bump) = NoncesDictionary::generate_pda_key(*_program_id, *owner.key);
+
+    let ix = system_instruction::create_account(
+        owner.key,
+        &nonce_pda,
+        rent_sysvar.minimum_balance(NoncesDictionary::LEN),
+        NoncesDictionary::LEN.try_into().unwrap(),
+        _program_id,
+    );
+
+    let seeds = &[
+        owner.key.as_ref(),
+        b"WPOKT",
+        b"nonces_dictionary_key",
+        &[bump],
+    ];
+    program::invoke_signed(
+        &ix,
+        &[nonce_account.clone(), owner.clone(), system_account.clone()],
+        &[seeds],
+    )?;
+
+    // deserialize this bih
+    let mut account_data =
+        NoncesDictionary::unpack_from_slice(&mut &mut nonce_account.data.borrow_mut()[..])?;
+    account_data.nonce = 0;
+    account_data.owner = *owner.key;
+    // serialize this bih
+    account_data.pack_into_slice(&mut &mut nonce_account.data.borrow_mut()[..]);
+
+    Ok(())
+}
+
+fn initialize_authorization_state_pda_account(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _from: &Pubkey,
+    _nonce: &[u8; 32],
+) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let payer = next_account_info(account_info_iter)?; // the account paying for the transaction submission
+    let from = next_account_info(account_info_iter)?; // account authorizing
+    let authorization_state_account = next_account_info(account_info_iter)?; // the PDA Authorization account to create
+    let rent_sysvar_account = next_account_info(account_info_iter)?; // WPOKT Mint account for PDA generation
+    let system_account = next_account_info(account_info_iter)?; // WPOKT Mint account for PDA generation
+
+    if !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    if !from.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    if !from.key.eq(_from) {
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    let rent_sysvar = Rent::from_account_info(rent_sysvar_account)?;
+    let (auth_state_pda, bump) =
+        AuthorizationStateDictionary::generate_pda_key(*_program_id, *from.key, *_nonce);
+
+    let ix = system_instruction::create_account(
+        payer.key,
+        &auth_state_pda,
+        rent_sysvar.minimum_balance(NoncesDictionary::LEN),
+        NoncesDictionary::LEN.try_into().unwrap(),
+        _program_id,
+    );
+
+    let seeds = &[
+        from.key.as_ref(),
+        _nonce.as_ref(),
+        b"WPOKT",
+        b"authorization_dictionary_key",
+        &[bump],
+    ];
+    program::invoke_signed(
+        &ix,
+        &[
+            authorization_state_account.clone(),
+            payer.clone(),
+            system_account.clone(),
+        ],
+        &[seeds],
+    )?;
+
+    // deserialize this bih
+    let mut auth_state_data = AuthorizationStateDictionary::unpack_from_slice(
+        &mut &mut authorization_state_account.data.borrow_mut()[..],
+    )?;
+    auth_state_data.nonce = *_nonce;
+    auth_state_data.authorization = true;
+    auth_state_data.from = *_from;
+    // serialize this bih
+    auth_state_data.pack_into_slice(&mut &mut authorization_state_account.data.borrow_mut()[..]);
+
+    Ok(())
+}
 fn generate_wpokt_pda(program_id: &Pubkey, mint_account: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[mint_account.as_ref(), b"WPOKT", b"global_state_account"],

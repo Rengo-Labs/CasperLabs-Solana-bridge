@@ -24,9 +24,8 @@ export const generateNonceDictionaryKey = async (
 ): Promise<[PublicKey, number]> => {
   let seeds: Uint8Array[] = [
     owner.toBytes(),
-    Buffer.from("nonces"),
-    Buffer.from("dictionary"),
-    Buffer.from("key"),
+    Buffer.from("WPOKT"),
+    Buffer.from("nonces_dictionary_key"),
   ];
   const [nonces_key, seedBump] = await PublicKey.findProgramAddress(
     seeds,

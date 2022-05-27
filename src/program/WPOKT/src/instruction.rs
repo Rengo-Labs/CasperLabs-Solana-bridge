@@ -42,4 +42,11 @@ pub enum WPOKTInstruction {
         valid_before: u64,
         nonce: String,
     },
+    ///   0. `[writable]` The Nonce PDA account
+    /// the owner of the nonce and the seed of the pda
+    InitializeNoncePdaAccount { owner: Pubkey },
+    ///   0. `[writable]` The AuthorizationState PDA account
+    /// @from one of two seeds of the pda
+    /// @nonce one of two seeds of the pda
+    InitializeAuthorizationStatePdaAccount { from: Pubkey, nonce: [u8; 32] },
 }
