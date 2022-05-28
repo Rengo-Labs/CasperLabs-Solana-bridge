@@ -21,13 +21,15 @@ export const WPOKT_ACCOUNT_DATA_LAYOUT: Structure<WPOKT> = struct([
 
 
 export interface NoncesDictionary {
-  nonce: bigint
+  owner: PublicKey;
+  nonce: bigint;
 }
 
 // /**
 //  * Layout for NoncesDictionary item struct
 //  */
 export const WPOKT_NONCES_DICTIONARY_LAYOUT: Structure<NoncesDictionary> = struct([
+  publicKey("owner"),
   u64("nonce"),
 ]);
 

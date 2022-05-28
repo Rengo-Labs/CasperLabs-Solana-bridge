@@ -17,13 +17,17 @@ import * as WPOKTState from "./state";
 import { verifyMint } from "../utils";
 import * as WPOKTInstruction from "./instructions";
 import { Key } from "readline";
+import { connect } from "http2";
+import { bigInt } from "@solana/buffer-layout-utils";
 
 export const generateNonceDictionaryKey = async (
   programId: PublicKey,
-  owner: PublicKey
+  owner: PublicKey,
+  mint: PublicKey
 ): Promise<[PublicKey, number]> => {
   let seeds: Uint8Array[] = [
     owner.toBytes(),
+    mint.toBytes(),
     Buffer.from("WPOKT"),
     Buffer.from("nonces_dictionary_key"),
   ];
@@ -189,6 +193,80 @@ export const changeMinter = async (
   return await sendAndConfirmTransaction(connection, tx, [currentMinter]);
 };
 
+export const initializeNoncePdaAccount = async (
+  connection: Connection,
+  programId: PublicKey,
+  owner: Keypair,
+  payer: Keypair,
+  nonceAccount: PublicKey,
+  mint: PublicKey
+) => {
+  let data = Buffer.alloc(
+    WPOKTInstruction.INITIALIZE_NONCE_PDA_ACCOUNT_LAYOUT.span
+  );
+  WPOKTInstruction.INITIALIZE_NONCE_PDA_ACCOUNT_LAYOUT.encode(
+    {
+      instruction: WPOKTInstruction.WPOKTInstruction.InitializeNoncePdaAccount,
+      owner: owner.publicKey,
+    },
+    data
+  );
+
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: payer.publicKey, isSigner: true, isWritable: false },
+      { pubkey: owner.publicKey, isSigner: true, isWritable: false },
+      { pubkey: nonceAccount, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: true },
+    ],
+    data,
+  });
+
+  const tx = new Transaction().add(ix);
+  return await sendAndConfirmTransaction(connection, tx, [payer, owner]);
+};
+
+export const getNonceDictionaryItemAccount = async (
+  connection: Connection,
+  nonceAccountAddress: PublicKey
+) => {
+  const account = await connection.getAccountInfo(nonceAccountAddress);
+
+  if (account === null) {
+    throw Error("TSX: getNonceDictionaryItemAccount(): Account not found.");
+  }
+  //decode account
+  return WPOKTState.WPOKT_NONCES_DICTIONARY_LAYOUT.decode(
+    Buffer.from(account.data)
+  );
+};
+
+export const validateNonceDictionaryItemAccount = async (
+  connection: Connection,
+  programId: PublicKey,
+  owner: PublicKey,
+  mint: PublicKey,
+  nonce: number
+) => {
+  const [nonceAccount, bump] = await generateNonceDictionaryKey(
+    programId,
+    owner,
+    mint
+  );
+
+  const data = await getNonceDictionaryItemAccount(connection, nonceAccount);
+
+  if (!data.owner.equals(owner)) {
+    throw Error(`TSX: validateNonceDictionaryItemAccount(): Invalid Owner`);
+  }
+
+  if (data.nonce !== BigInt(nonce)) {
+    throw Error(`TSX: validateNonceDictionaryItemAccount(): Invalid Nonce`);
+  }
+};
 /**
  *
  * @param connection
@@ -201,18 +279,25 @@ export const changeMinter = async (
 export const permit = async (
   connection: Connection,
   programId: PublicKey,
+  payer: Keypair,
   sourceToken: PublicKey,
   sourceTokenAuthority: Keypair,
   mint: PublicKey,
   delegateToken: PublicKey,
   amount: number,
-  deadline: number
+  deadline: number,
+  noncePdaAccount: PublicKey
 ) => {
   const data = Buffer.alloc(WPOKTInstruction.PERMIT_LAYOUT.span);
   const [nonceKey, bump] = await generateNonceDictionaryKey(
     programId,
-    sourceTokenAuthority.publicKey
+    sourceTokenAuthority.publicKey,
+    mint
   );
+
+  if (!nonceKey.equals(noncePdaAccount)) {
+    throw Error(`TSX - permit(): Nonce Account key mismatch`);
+  }
 
   WPOKTInstruction.PERMIT_LAYOUT.encode(
     {
@@ -228,14 +313,16 @@ export const permit = async (
   const ix = new TransactionInstruction({
     programId,
     keys: [
+      { pubkey: payer.publicKey, isSigner: true, isWritable: false },
       {
         pubkey: sourceTokenAuthority.publicKey,
         isSigner: true,
         isWritable: false,
       },
-      { pubkey: nonceKey, isSigner: false, isWritable: true },
+      { pubkey: noncePdaAccount, isSigner: false, isWritable: true },
       { pubkey: sourceToken, isSigner: false, isWritable: true },
       { pubkey: delegateToken, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
       { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SYSVAR_CLOCK_PUBKEY, isSigner: false, isWritable: false },
     ],
@@ -245,9 +332,61 @@ export const permit = async (
   const tx = new Transaction().add(ix);
   return await sendAndConfirmTransaction(connection, tx, [
     sourceTokenAuthority,
+    payer,
   ]);
 };
 
+export const verifyPermit = async (
+  connection: Connection,
+  programId: PublicKey,
+  sourceToken: PublicKey,
+  sourceTokenAuthority: PublicKey,
+  mint: PublicKey,
+  delegateToken: PublicKey,
+  amount: number,
+  noncePdaAccount: PublicKey,
+  expectedNonce: number
+) => {
+  const [nonceKey, bump] = await generateNonceDictionaryKey(
+    programId,
+    sourceTokenAuthority,
+    mint
+  );
+
+  if (!nonceKey.equals(noncePdaAccount)) {
+    throw Error(`TSX - permit(): Nonce Account key mismatch`);
+  }
+
+  // verify nonce account
+  await validateNonceDictionaryItemAccount(
+    connection,
+    programId,
+    sourceTokenAuthority,
+    mint,
+    expectedNonce
+  );
+
+  // verify delegate on src token account
+  const srcTokenAccount = await splToken.getAccount(connection, sourceToken);
+
+  if (srcTokenAccount === null) {
+    throw Error(
+      `TSX - verifyPermit(): source token account not found at ${sourceToken}`
+    );
+  }
+
+  if (!srcTokenAccount.delegate?.equals(delegateToken)) {
+    throw Error(
+      `TSX - verifyPermit(): Delegate Key mismatch. srcTokenAccount.delegat is ${srcTokenAccount.delegate?.toBase58()}`
+    );
+  }
+
+  if (srcTokenAccount.delegatedAmount !== BigInt(amount)) {
+    throw Error(
+      `TSX - verifyPermit(): Delegate Amount mismatch. srcTokenAccount.delegateAmount is ${srcTokenAccount.delegatedAmount}`
+    );
+  }
+};
 /**
  * Verifies all required accounts were created and have the correct initial states
  * @param connection the rpc connection instance

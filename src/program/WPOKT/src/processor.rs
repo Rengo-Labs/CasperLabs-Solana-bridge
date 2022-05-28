@@ -45,7 +45,10 @@ impl Processor {
                 spender,
                 value,
                 deadline,
-            } => permit(program_id, accounts, owner, spender, value, deadline),
+            } => {
+                msg!("WPOKTInstruction::Permit");
+                permit(program_id, accounts, owner, spender, value, deadline)
+            }
             WPOKTInstruction::TransferWithAuthorization {
                 from,
                 to,
@@ -53,16 +56,19 @@ impl Processor {
                 valid_after,
                 valid_before,
                 nonce,
-            } => transfer_with_authorization(
-                program_id,
-                accounts,
-                from,
-                to,
-                value,
-                valid_after,
-                valid_before,
-                nonce,
-            ),
+            } => {
+                msg!("WPOKTInstruction::TransferWithAuthorization");
+                transfer_with_authorization(
+                    program_id,
+                    accounts,
+                    from,
+                    to,
+                    value,
+                    valid_after,
+                    valid_before,
+                    nonce,
+                )
+            }
             WPOKTInstruction::InitializeNoncePdaAccount { owner } => {
                 msg!("WPOKTInstruction::InitializeNoncePdaAccount");
                 initialize_nonce_pda_account(program_id, accounts, &owner)
@@ -305,18 +311,17 @@ fn permit(
     deadline: u64,
 ) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
-    let src_token_account_owner = next_account_info(account_info_iter)?; //signer signed this offline
+    let payer = next_account_info(account_info_iter)?; // the payer of the transaction, auth of delegate token account
+    let src_token_account_owner = next_account_info(account_info_iter)?; //signer signed this offline - the 'owner'
     let nonces_account = next_account_info(account_info_iter)?;
     let src_token_account = next_account_info(account_info_iter)?;
     let delegate_token_account = next_account_info(account_info_iter)?;
+    let mint_token_account = next_account_info(account_info_iter)?; // the WPOKT Mint account
     let token_program_account = next_account_info(account_info_iter)?;
     let clock_sysvar_account = next_account_info(account_info_iter)?;
-    let clock = Clock::from_account_info(clock_sysvar_account)?;
 
-    if *delegate_token_account.key != spender {
-        return Err(ProgramError::Custom(
-            WPOKTError::DelegateSpenderMismatch as u32,
-        ));
+    if !src_token_account_owner.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
     }
 
     if !src_token_account_owner.key.eq(&owner) {
@@ -325,13 +330,23 @@ fn permit(
         ));
     }
 
+    if *delegate_token_account.key != spender {
+        return Err(ProgramError::Custom(
+            WPOKTError::DelegateSpenderMismatch as u32,
+        ));
+    }
+
+    let clock = Clock::from_account_info(clock_sysvar_account)?;
     let current_timestamp: u64 = clock.unix_timestamp.try_into().unwrap();
-    if deadline >= current_timestamp {
+    if current_timestamp >= deadline {
         return Err(ProgramError::Custom(WPOKTError::AuthExpired as u32));
     }
 
-    let (nonce_pda, _) =
-        NoncesDictionary::generate_pda_key(*_program_id, *src_token_account_owner.key);
+    let (nonce_pda, _) = NoncesDictionary::generate_pda_key(
+        _program_id,
+        src_token_account_owner.key,
+        mint_token_account.key,
+    );
 
     if !nonces_account.owner.eq(_program_id) {
         return Err(ProgramError::IllegalOwner);
@@ -353,6 +368,7 @@ fn permit(
     nonces_data.nonce += 1;
     nonces_data.pack_into_slice(&mut &mut nonces_account.data.borrow_mut()[..]);
 
+    // source token auth will sign this approve
     let approve_ix = spl_token::instruction::approve(
         &spl_token::id(),
         src_token_account.key,
@@ -367,7 +383,7 @@ fn permit(
         &[
             src_token_account.clone(),
             delegate_token_account.clone(),
-            src_token_account_owner.clone(),
+            payer.clone(),
             token_program_account.clone(),
         ],
     )?;
@@ -451,10 +467,16 @@ fn initialize_nonce_pda_account(
     _owner: &Pubkey,
 ) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
-    let owner = next_account_info(account_info_iter)?; // the owner and payer
+    let payer = next_account_info(account_info_iter)?; // the payer of transaction
+    let owner = next_account_info(account_info_iter)?; // the owner of the nonce
     let nonce_account = next_account_info(account_info_iter)?; // the PDA Nonce account to create
+    let mint_account = next_account_info(account_info_iter)?; // the PDA Nonce account to create
     let rent_sysvar_account = next_account_info(account_info_iter)?; // WPOKT Mint account for PDA generation
     let system_account = next_account_info(account_info_iter)?; // WPOKT Mint account for PDA generation
+
+    if !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
     if !owner.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
@@ -465,11 +487,18 @@ fn initialize_nonce_pda_account(
     }
 
     let rent_sysvar = Rent::from_account_info(rent_sysvar_account)?;
-    let (nonce_pda, bump) = NoncesDictionary::generate_pda_key(*_program_id, *owner.key);
+    let (nonce_pda, bump) =
+        NoncesDictionary::generate_pda_key(_program_id, owner.key, mint_account.key);
+
+    if !(nonce_account.key.eq(&nonce_pda)) {
+        return Err(ProgramError::Custom(
+            WPOKTError::NoncesDictionaryItemKeyMismatch as u32,
+        ));
+    }
 
     let ix = system_instruction::create_account(
-        owner.key,
-        &nonce_pda,
+        payer.key,
+        nonce_account.key,
         rent_sysvar.minimum_balance(NoncesDictionary::LEN),
         NoncesDictionary::LEN.try_into().unwrap(),
         _program_id,
@@ -477,13 +506,14 @@ fn initialize_nonce_pda_account(
 
     let seeds = &[
         owner.key.as_ref(),
+        mint_account.key.as_ref(),
         b"WPOKT",
         b"nonces_dictionary_key",
         &[bump],
     ];
     program::invoke_signed(
         &ix,
-        &[nonce_account.clone(), owner.clone(), system_account.clone()],
+        &[nonce_account.clone(), payer.clone(), system_account.clone()],
         &[seeds],
     )?;
 
@@ -506,7 +536,7 @@ fn initialize_authorization_state_pda_account(
 ) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
     let payer = next_account_info(account_info_iter)?; // the account paying for the transaction submission
-    let from = next_account_info(account_info_iter)?; // account authorizing
+    let from = next_account_info(account_info_iter)?; // the account authorizing
     let authorization_state_account = next_account_info(account_info_iter)?; // the PDA Authorization account to create
     let rent_sysvar_account = next_account_info(account_info_iter)?; // WPOKT Mint account for PDA generation
     let system_account = next_account_info(account_info_iter)?; // WPOKT Mint account for PDA generation

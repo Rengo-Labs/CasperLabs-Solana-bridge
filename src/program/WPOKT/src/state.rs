@@ -64,10 +64,15 @@ pub struct NoncesDictionary {
 }
 
 impl NoncesDictionary {
-    pub fn generate_pda_key(program_id: Pubkey, address: Pubkey) -> (Pubkey, u8) {
+    pub fn generate_pda_key(program_id: &Pubkey, owner: &Pubkey, mint: &Pubkey) -> (Pubkey, u8) {
         Pubkey::find_program_address(
-            &[address.as_ref(), b"WPOKT", b"nonces_dictionary_key"],
-            &program_id,
+            &[
+                owner.as_ref(),
+                mint.as_ref(),
+                b"WPOKT",
+                b"nonces_dictionary_key",
+            ],
+            program_id,
         )
     }
 }

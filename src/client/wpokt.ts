@@ -15,6 +15,8 @@ import path from "path";
 import * as WPOKT from "./WPOKT/wpokt";
 import * as SPLToken from "@solana/spl-token";
 import assert from "assert";
+import { mint } from "./WPokt/w_pokt";
+import { connect } from "http2";
 
 // program lib names
 const WPOKT_LIB_NAME = "wpokt";
@@ -164,29 +166,90 @@ async function wpoktTests(
     `TSX - wpoktTests(): ${WPOKT_LIB_NAME} Instruction::ChangeMinter Verified...`
   );
 
-  // // create delegate token account, owner is payer
-  // let delegateToken = SPLToken.createAccount(connection, payer, mintAccount.publicKey, payer.publicKey);
+  // create and valida NoncesDictionaryItem account with owner 'payer'
+  const [nonceAccount, nonceAccountBump] =
+    await WPOKT.generateNonceDictionaryKey(
+      programId,
+      payer.publicKey,
+      mintAccount.publicKey
+    );
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} NoncesDictionary PDA generated at ${nonceAccount.toBase58()}...`
+  );
+  await WPOKT.initializeNoncePdaAccount(
+    connection,
+    programId,
+    payer,
+    payer,
+    nonceAccount,
+    mintAccount.publicKey
+  );
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} NoncesDictionary PDA Account Initialized. ${nonceAccount.toBase58()}...`
+  );
+  await WPOKT.validateNonceDictionaryItemAccount(
+    connection,
+    programId,
+    payer.publicKey,
+    mintAccount.publicKey,
+    0
+  );
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} NoncesDictionary PDA Account Initialization Validated. ${nonceAccount.toBase58()}...`
+  );
 
-  // // creating the Nonces PDA Key account
-  // let [noncesAccount, bump] = await WPOKT.generateNonceDictionaryKey(programId, receiverAccount);
-  //   // TODO create NoncePDA account on chain only as its a pda
-  // // SystemProgram.createAccountWithSeed({
+  // create delegate token account, owner/auth is payer(not relevant who should be delegate auth)
+  let delegateTokenAccount = await SPLToken.createAccount(
+    connection,
+    payer,
+    mintAccount.publicKey,
+    newMinter.publicKey
+  );
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} Delegate Token Account created. ${delegateTokenAccount.toBase58()}...`
+  );
+  // get blocktime to set deadline
+  let currentSlot = await connection.getSlot();
+  let currentblocktime = await connection.getBlockTime(currentSlot);
+  if (currentblocktime === null) {
+    throw Error(`TSC - wpoktTests(): blocktime is null`);
+  }
+  let deadline = currentblocktime * 2;
 
-  // // });
+  // now we permint the delegate
+  const delegateAmount = mintAmount / 100;
+  await WPOKT.permit(
+    connection,
+    programId,
+    payer,
+    receiverAccount,
+    payer,
+    mintAccount.publicKey,
+    delegateTokenAccount,
+    delegateAmount,
+    deadline,
+    nonceAccount
+  );
 
-  // let createNoncesPdaIx = SystemProgram.createAccount({
-  //   programId: SystemProgram.programId,
-  //   space: 1,
-  //   lamports: await connection.getMinimumBalanceForRentExemption(1),
-  //   fromPubkey: payer.publicKey,
-  //   newAccountPubkey: noncesAccount,
-  // });
-  // tx = new Transaction().add(createNoncesPdaIx);
-  // await sendAndConfirmTransaction(connection, tx, [payer]);
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} WPOKTInstruction::Permit...`
+  );
 
-  // console.log(
-  //   `TSX - wpoktTests(): ${WPOKT_LIB_NAME} newMinter account created at ${newMinter.publicKey.toBase58()}...`
-  // );
+  await WPOKT.verifyPermit(
+    connection,
+    programId,
+    receiverAccount,
+    payer.publicKey,
+    mintAccount.publicKey,
+    delegateTokenAccount,
+    delegateAmount,
+    nonceAccount,
+    1
+  );
+
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} WPOKTInstruction::Permit Verified...`
+  );
   // NOTE reusing receiverAccount for source token, having being minted to.
   // await WPOKT.permit(connection)
   // cerate source token auth nonces account
