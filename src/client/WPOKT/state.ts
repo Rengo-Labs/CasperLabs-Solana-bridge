@@ -1,6 +1,6 @@
 import { bool, publicKey, u64 } from "@solana/buffer-layout-utils";
 import { PublicKey } from "@solana/web3.js";
-import { struct, Structure } from "@solana/buffer-layout";
+import { struct, Structure, blob } from "@solana/buffer-layout";
 /**
  * WPOKT state account interface
  */
@@ -19,7 +19,6 @@ export const WPOKT_ACCOUNT_DATA_LAYOUT: Structure<WPOKT> = struct([
   publicKey("mint"),
 ]);
 
-
 export interface NoncesDictionary {
   owner: PublicKey;
   nonce: bigint;
@@ -28,19 +27,21 @@ export interface NoncesDictionary {
 // /**
 //  * Layout for NoncesDictionary item struct
 //  */
-export const WPOKT_NONCES_DICTIONARY_LAYOUT: Structure<NoncesDictionary> = struct([
-  publicKey("owner"),
-  u64("nonce"),
-]);
+export const WPOKT_NONCES_DICTIONARY_LAYOUT: Structure<NoncesDictionary> =
+  struct([publicKey("owner"), u64("nonce")]);
 
-
-export interface AuthorizationStateDictionary{
-  authorization: boolean
+export interface AuthorizationStateDictionary {
+  from: PublicKey;
+  nonce: Uint8Array;
+  authorization: boolean;
 }
 
 // /**
 //  * Layout for AuthorizationStateDictionary item struct
 //  */
-export const WPOKT_AUTHORIZATION_DICTIONARY_LAYOUT= struct<AuthorizationStateDictionary>([
-  bool("authorization"),
-]);
+export const WPOKT_AUTHORIZATION_DICTIONARY_LAYOUT =
+  struct<AuthorizationStateDictionary>([
+    publicKey("from"),
+    blob(32, "nonce"),
+    bool("authorization"),
+  ]);

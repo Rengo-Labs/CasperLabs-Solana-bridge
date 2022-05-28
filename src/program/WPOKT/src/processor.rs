@@ -531,14 +531,16 @@ fn initialize_nonce_pda_account(
 fn initialize_authorization_state_pda_account(
     _program_id: &Pubkey,
     _accounts: &[AccountInfo],
-    _from: &Pubkey,
+    _from: &Pubkey, // the source token account
     _nonce: &[u8; 32],
 ) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
     let payer = next_account_info(account_info_iter)?; // the account paying for the transaction submission
-    let from = next_account_info(account_info_iter)?; // the account authorizing
+    let from = next_account_info(account_info_iter)?; // the source token account authority
+                                                      // let source_token_account = next_account_info(account_info_iter)?; // the source token account
     let authorization_state_account = next_account_info(account_info_iter)?; // the PDA Authorization account to create
-    let rent_sysvar_account = next_account_info(account_info_iter)?; // WPOKT Mint account for PDA generation
+    let mint_account = next_account_info(account_info_iter)?; // the WPOKT PDA Mint account
+    let rent_sysvar_account = next_account_info(account_info_iter)?;
     let system_account = next_account_info(account_info_iter)?; // WPOKT Mint account for PDA generation
 
     if !payer.is_signer {
@@ -554,20 +556,25 @@ fn initialize_authorization_state_pda_account(
     }
 
     let rent_sysvar = Rent::from_account_info(rent_sysvar_account)?;
-    let (auth_state_pda, bump) =
-        AuthorizationStateDictionary::generate_pda_key(*_program_id, *from.key, *_nonce);
+    let (auth_state_pda, bump) = AuthorizationStateDictionary::generate_pda_key(
+        _program_id,
+        from.key,
+        mint_account.key,
+        _nonce,
+    );
 
     let ix = system_instruction::create_account(
         payer.key,
         &auth_state_pda,
-        rent_sysvar.minimum_balance(NoncesDictionary::LEN),
-        NoncesDictionary::LEN.try_into().unwrap(),
+        rent_sysvar.minimum_balance(AuthorizationStateDictionary::LEN),
+        AuthorizationStateDictionary::LEN.try_into().unwrap(),
         _program_id,
     );
 
     let seeds = &[
         from.key.as_ref(),
         _nonce.as_ref(),
+        mint_account.key.as_ref(),
         b"WPOKT",
         b"authorization_dictionary_key",
         &[bump],
@@ -582,18 +589,21 @@ fn initialize_authorization_state_pda_account(
         &[seeds],
     )?;
 
+    msg!("Deserialize AuthState account");
     // deserialize this bih
     let mut auth_state_data = AuthorizationStateDictionary::unpack_from_slice(
         &mut &mut authorization_state_account.data.borrow_mut()[..],
     )?;
     auth_state_data.nonce = *_nonce;
-    auth_state_data.authorization = true;
+    auth_state_data.authorization = false;
     auth_state_data.from = *_from;
     // serialize this bih
     auth_state_data.pack_into_slice(&mut &mut authorization_state_account.data.borrow_mut()[..]);
+    msg!("Serialize AuthState account");
 
     Ok(())
 }
+
 fn generate_wpokt_pda(program_id: &Pubkey, mint_account: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[mint_account.as_ref(), b"WPOKT", b"global_state_account"],

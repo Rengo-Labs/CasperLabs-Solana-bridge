@@ -21,7 +21,7 @@ impl IsInitialized for WPOKT {
 }
 
 impl Pack for WPOKT {
-    const LEN: usize = 1 + 2 * 32;
+    const LEN: usize = 1 + 32 + 32;
 
     // for deserialization
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
@@ -110,11 +110,17 @@ pub struct AuthorizationStateDictionary {
 }
 
 impl AuthorizationStateDictionary {
-    pub fn generate_pda_key(program_id: Pubkey, from: Pubkey, nonce: [u8; 32]) -> (Pubkey, u8) {
+    pub fn generate_pda_key(
+        program_id: &Pubkey,
+        from: &Pubkey,
+        mint: &Pubkey,
+        nonce: &[u8; 32],
+    ) -> (Pubkey, u8) {
         Pubkey::find_program_address(
             &[
                 from.as_ref(),
                 nonce.as_ref(),
+                mint.as_ref(),
                 b"WPOKT",
                 b"authorization_dictionary_key",
             ],

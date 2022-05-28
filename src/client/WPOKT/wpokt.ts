@@ -20,6 +20,24 @@ import { Key } from "readline";
 import { connect } from "http2";
 import { bigInt } from "@solana/buffer-layout-utils";
 
+export const generateAuthorizationStateDictionaryKey = async (
+  programId: PublicKey,
+  from: PublicKey,
+  mint: PublicKey,
+  nonce: string
+): Promise<[PublicKey, number]> => {
+  const seeds: Uint8Array[] = [
+    from.toBytes(),
+    Buffer.from(nonce),
+    mint.toBytes(),
+    Buffer.from("WPOKT"),
+    Buffer.from("authorization_dictionary_key"),
+  ];
+
+  const [pda, seedBump] = await PublicKey.findProgramAddress(seeds, programId);
+  return [pda, seedBump];
+};
+
 export const generateNonceDictionaryKey = async (
   programId: PublicKey,
   owner: PublicKey,
@@ -193,6 +211,113 @@ export const changeMinter = async (
   return await sendAndConfirmTransaction(connection, tx, [currentMinter]);
 };
 
+export const initializeAuthorizeStatePdaAccount = async (
+  connection: Connection,
+  programId: PublicKey,
+  payer: Keypair,
+  from: Keypair,
+  nonce: string,
+  authStatePdaAccount: PublicKey,
+  mint: PublicKey
+) => {
+  let data = Buffer.alloc(
+    WPOKTInstruction.INITIALIZE_AUTHORIZATION_STATE_PDA_ACCOUNT_LAYOUT.span
+  );
+  WPOKTInstruction.INITIALIZE_AUTHORIZATION_STATE_PDA_ACCOUNT_LAYOUT.encode(
+    {
+      instruction:
+        WPOKTInstruction.WPOKTInstruction
+          .InitializeAuthorizationStatePdaAccount,
+      from: from.publicKey,
+      nonce: Buffer.from(nonce),
+    },
+    data
+  );
+
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: payer.publicKey, isSigner: true, isWritable: false },
+      { pubkey: from.publicKey, isSigner: true, isWritable: false },
+      { pubkey: authStatePdaAccount, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: true },
+    ],
+    data,
+  });
+
+  const tx = new Transaction().add(ix);
+  return await sendAndConfirmTransaction(connection, tx, [payer, from]);
+};
+
+export const getAuthStateDictionaryAccount = async (
+  connection: Connection,
+  authStatePdaAccount: PublicKey
+) => {
+  const account = await connection.getAccountInfo(authStatePdaAccount);
+  if (account === null) {
+    throw Error("TSX: getNonceDictionaryItemAccount(): Account not found.");
+  }
+  //decode account
+  return WPOKTState.WPOKT_AUTHORIZATION_DICTIONARY_LAYOUT.decode(
+    Buffer.from(account.data)
+  );
+};
+
+/**
+ *
+ * @param connection The rpc connection instance
+ * @param programId The WPOKT programId
+ * @param from the source token authority giving the allowance/authorization
+ * @param nonce the nonce of the nonce account for offline transaction siging
+ * @param mint the WPOKT mint account
+ * @param state the state of authorization to verify
+ */
+export const verifyAuthStatePdaAccount = async (
+  connection: Connection,
+  programId: PublicKey,
+  from: PublicKey,
+  nonce: string,
+  mint: PublicKey,
+  state: boolean
+) => {
+  const [pda, bump] = await generateAuthorizationStateDictionaryKey(
+    programId,
+    from,
+    mint,
+    nonce
+  );
+
+  const data = await getAuthStateDictionaryAccount(connection, pda);
+
+  if (data.authorization !== state) {
+    throw Error(
+      `TSX - verifyAuthStatePdaAccount(): Invalid auth state, it's ${data.authorization}`
+    );
+  }
+  if (!data.from.equals(from)) {
+    throw Error(
+      `TSX - verifyAuthStatePdaAccount(): Unequal 'from' ${data.from.toBase58()}`
+    );
+  }
+  if (data.nonce.toString() !== nonce) {
+    throw Error(
+      `TSX - verifyAuthStatePdaAccount(): Unequal 'nonce' ${data.nonce.toString()} !== ${nonce}`
+    );
+  }
+};
+
+/**
+ *
+ * @param connection The rpc connection instance
+ * @param programId The WPOKT programId
+ * @param owner The source token account authority giving the allowance
+ * @param payer pays for the transaction
+ * @param nonceAccount the Nonce Dictionary account holding the incremental nonce
+ * @param mint the WPOKT mint account
+ * @returns transaction signature
+ */
 export const initializeNoncePdaAccount = async (
   connection: Connection,
   programId: PublicKey,
@@ -244,7 +369,7 @@ export const getNonceDictionaryItemAccount = async (
   );
 };
 
-export const validateNonceDictionaryItemAccount = async (
+export const verifyNonceDictionaryItemAccount = async (
   connection: Connection,
   programId: PublicKey,
   owner: PublicKey,
@@ -267,6 +392,9 @@ export const validateNonceDictionaryItemAccount = async (
     throw Error(`TSX: validateNonceDictionaryItemAccount(): Invalid Nonce`);
   }
 };
+
+// TODO implement ofc
+export const transferWithAuthorization = async (){}
 /**
  *
  * @param connection
@@ -358,7 +486,7 @@ export const verifyPermit = async (
   }
 
   // verify nonce account
-  await validateNonceDictionaryItemAccount(
+  await verifyNonceDictionaryItemAccount(
     connection,
     programId,
     sourceTokenAuthority,

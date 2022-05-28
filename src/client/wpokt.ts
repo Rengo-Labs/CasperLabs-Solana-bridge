@@ -187,7 +187,7 @@ async function wpoktTests(
   console.log(
     `TSX - wpoktTests(): ${WPOKT_LIB_NAME} NoncesDictionary PDA Account Initialized. ${nonceAccount.toBase58()}...`
   );
-  await WPOKT.validateNonceDictionaryItemAccount(
+  await WPOKT.verifyNonceDictionaryItemAccount(
     connection,
     programId,
     payer.publicKey,
@@ -195,7 +195,7 @@ async function wpoktTests(
     0
   );
   console.log(
-    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} NoncesDictionary PDA Account Initialization Validated. ${nonceAccount.toBase58()}...`
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} NoncesDictionary PDA Account Initialization Verified. ${nonceAccount.toBase58()}...`
   );
 
   // create delegate token account, owner/auth is payer(not relevant who should be delegate auth)
@@ -250,9 +250,35 @@ async function wpoktTests(
   console.log(
     `TSX - wpoktTests(): ${WPOKT_LIB_NAME} WPOKTInstruction::Permit Verified...`
   );
-  // NOTE reusing receiverAccount for source token, having being minted to.
-  // await WPOKT.permit(connection)
-  // cerate source token auth nonces account
+
+  const nonce = Keypair.generate().publicKey.toString().slice(0, 32);
+  const [authStatePda, bump] =
+    await WPOKT.generateAuthorizationStateDictionaryKey(
+      programId,
+      payer.publicKey,
+      mintAccount.publicKey,
+      nonce
+    );
+  await WPOKT.initializeAuthorizeStatePdaAccount(
+    connection,
+    programId,
+    payer,
+    payer,
+    nonce,
+    authStatePda,
+    mintAccount.publicKey
+  );
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} AuthorizationState PDA Account Initialized. ${nonceAccount.toBase58()}...`
+  );
+  await WPOKT.verifyAuthStatePdaAccount(
+    connection,
+    programId,
+    payer.publicKey,
+    nonce,
+    mintAccount.publicKey,
+    false
+  );
   return [PublicKey.default, Keypair.generate(), PublicKey.default];
 }
 
