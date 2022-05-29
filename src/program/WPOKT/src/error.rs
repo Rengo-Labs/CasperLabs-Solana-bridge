@@ -26,6 +26,12 @@ pub enum WPOKTError {
     NoncesDictionaryItemKeyMismatch,
     #[error("wPOKT:NONCES_DICTIONARY_OWNER_KEY_MISMATCH")]
     NoncesDictionaryItemOwnerMismatch,
+    #[error("wPOKT:AUTH_STATE_DICTIONARY_ITEM_KEY_MISMATCH")]
+    AuthStateDictionaryItemKeyMismatch,
+    #[error("wPOKT:AUTH_STATE_DICTIONARY_FROM_KEY_MISMATCH")]
+    AuthStateDictionaryFromKeyMismatch,
+    #[error("wPOKT:AUTH_STATE_DICTIONARY_NONCE_MISMATCH")]
+    AuthStateDictionaryNonceMismatch,
 }
 
 impl From<WPOKTError> for ProgramError {

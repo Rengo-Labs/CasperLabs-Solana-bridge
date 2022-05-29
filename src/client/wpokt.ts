@@ -17,6 +17,7 @@ import * as SPLToken from "@solana/spl-token";
 import assert from "assert";
 import { mint } from "./WPokt/w_pokt";
 import { connect } from "http2";
+import { WPOKTInstruction } from "./WPOKT/instructions";
 
 // program lib names
 const WPOKT_LIB_NAME = "wpokt";
@@ -269,7 +270,7 @@ async function wpoktTests(
     mintAccount.publicKey
   );
   console.log(
-    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} AuthorizationState PDA Account Initialized. ${nonceAccount.toBase58()}...`
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} WPOKTInstruction::InitializeAuthorizationStatePdaAccount...`
   );
   await WPOKT.verifyAuthStatePdaAccount(
     connection,
@@ -279,6 +280,43 @@ async function wpoktTests(
     mintAccount.publicKey,
     false
   );
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} WPOKTInstruction::InitializeAuthorizationStatePdaAccount Verified...`
+  );
+  await WPOKT.transferWithAuthorization(
+    connection,
+    programId,
+    payer,
+    receiverAccount,
+    nonce,
+    authStatePda,
+    mintAccount.publicKey,
+    payer,
+    delegateTokenAccount,
+    delegateAmount,
+    0,
+    deadline*2
+  );
+  console.log(
+    `TSX - wpoktTests(): ${WPOKT_LIB_NAME} WPOKTInstruction::TransferWithAuthorization...`
+  );
+
+  // receiverAccount was minted 'mintAmount' tokens
+  // delegateToken amount was delegeted 'delegateAmount', and had 0 initial balance
+  // after TransferWithAuthorization, receiver will have 'mintAmount - delegateAmount' tokens
+  // delegateTokenAccount will have 'delegateAmount'
+  await WPOKT.verifyTransferWithAuthorization(
+    connection,
+    programId,
+    payer.publicKey,
+    receiverAccount,
+    nonce,
+    mintAccount.publicKey,
+    delegateTokenAccount,
+    mintAmount - delegateAmount,
+    delegateAmount
+  );
+  
   return [PublicKey.default, Keypair.generate(), PublicKey.default];
 }
 

@@ -393,8 +393,97 @@ export const verifyNonceDictionaryItemAccount = async (
   }
 };
 
-// TODO implement ofc
-export const transferWithAuthorization = async (){}
+export const transferWithAuthorization = async (
+  connection: Connection,
+  programId: PublicKey,
+  from: Keypair,
+  fromTokenAccount: PublicKey,
+  nonce: string,
+  authStatePdaAccount: PublicKey,
+  mint: PublicKey,
+  to: Keypair,
+  toTokenAccount: PublicKey,
+  amount: number,
+  validAfter: number,
+  validBefore: number
+) => {
+  const data = Buffer.alloc(
+    WPOKTInstruction.TRANSFER_WITH_AUTHORIZATION_LAYOUT.span
+  );
+  WPOKTInstruction.TRANSFER_WITH_AUTHORIZATION_LAYOUT.encode(
+    {
+      instruction: WPOKTInstruction.WPOKTInstruction.TransferWithAuthorization,
+      from: from.publicKey,
+      to: to.publicKey,
+      value: amount,
+      validAfter,
+      validBefore,
+      nonce: Buffer.from(nonce),
+    },
+    data
+  );
+
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: to.publicKey, isSigner: true, isWritable: false },
+      { pubkey: authStatePdaAccount, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: fromTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: from.publicKey, isSigner: true, isWritable: false },
+      { pubkey: toTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+
+  const tx = new Transaction().add(ix);
+  return await sendAndConfirmTransaction(connection, tx, [to, from]);
+};
+
+export const verifyTransferWithAuthorization = async (
+  connection: Connection,
+  programId: PublicKey,
+  from: PublicKey,
+  fromTokenAccount: PublicKey,
+  nonce: string,
+  mint: PublicKey,
+  toTokenAccount: PublicKey,
+  expectedSrcTokenAmount: number,
+  expectedDstTokenAmount: number
+) => {
+  // get the auth state account
+  const [pda, bump] = await generateAuthorizationStateDictionaryKey(
+    programId,
+    from,
+    mint,
+    nonce
+  );
+
+  const pdaData = await getAuthStateDictionaryAccount(connection, pda);
+
+  await verifyAuthStatePdaAccount(
+    connection,
+    programId,
+    from,
+    nonce,
+    mint,
+    true
+  );
+
+  // veify source token amount
+  const srcTokenData = await splToken.getAccount(connection, fromTokenAccount);
+  if (srcTokenData.amount !== BigInt(expectedSrcTokenAmount)){
+    throw Error(`TSC - verifyTransferWithAuthorization(): Unexped Source token amount ${srcTokenData.amount}`);
+  }
+
+  // verify destination token amount
+  const dstTokenData = await splToken.getAccount(connection, toTokenAccount);
+  if (dstTokenData.amount !== BigInt(expectedDstTokenAmount)){
+    throw Error(`TSC - verifyTransferWithAuthorization(): Unexped Destination token amount ${dstTokenData.amount}`);
+  }
+
+};
 /**
  *
  * @param connection
@@ -603,32 +692,3 @@ export const verifyConstruction = async (
   const wpoktMintData = await splToken.getMint(connection, mint);
   await verifyMint(wpoktMintData, true, wpokt, 0);
 };
-
-// export const VerifyWPoktBridgeAddress = async (
-//   connection: Connection,
-//   wPoktPda: PublicKey,
-//   bridge: PublicKey
-// ) => {
-//   // query bridge PDA account
-//   const pdaAccount = await connection.getAccountInfo(wPoktPda);
-
-//   if (pdaAccount === null) {
-//     console.log(
-//       `TSX: constVerifyWPoktBridgeAddress(): WPOKT PDA account not found ${wPoktPda}`
-//     );
-//     process.exit(1);
-//   }
-
-//   // decode account
-//   const pdaAccountData = WPoktState.W_POKT_ACCOUNT_DATA_LAYOUT.decode(
-//     Buffer.from(pdaAccount.data)
-//   );
-
-//   // verify bridge address
-//   if (!pdaAccountData.bridgeAddress.equals(bridge)) {
-//     console.log(
-//       `TSX: constVerifyWPoktBridgeAddress(): WPOKT PDA Bridge Address is ${pdaAccountData.bridgeAddress.toBase58()}`
-//     );
-//     process.exit(1);
-//   }
-// };

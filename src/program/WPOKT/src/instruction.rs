@@ -40,7 +40,7 @@ pub enum WPOKTInstruction {
         value: u64,
         valid_after: u64,
         valid_before: u64,
-        nonce: String,
+        nonce: [u8; 32],
     },
     ///   0. `[writable]` The Nonce PDA account
     /// the owner of the nonce and the seed of the pda

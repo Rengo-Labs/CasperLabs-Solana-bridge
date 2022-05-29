@@ -94,7 +94,7 @@ export interface TransferWithAuthorization {
   value: number;
   validAfter: number;
   validBefore: number;
-  nonce: String;
+  nonce: Uint8Array;
 }
 
 export const TRANSFER_WITH_AUTHORIZATION_LAYOUT: BufferLayout.Layout<TransferWithAuthorization> =
@@ -105,7 +105,7 @@ export const TRANSFER_WITH_AUTHORIZATION_LAYOUT: BufferLayout.Layout<TransferWit
     BufferLayout.nu64("value"),
     BufferLayout.nu64("validAfter"),
     BufferLayout.nu64("validBefore"),
-    BufferLayout.cstr("nonce"),
+    BufferLayout.blob(32, "nonce"),
   ]);
 
 export interface InitializeNoncePdaAccount {

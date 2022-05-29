@@ -151,14 +151,9 @@ fn construct(
     )?;
 
     let mut wpokt_data = WPOKT::unpack_from_slice(&wpokt_account.data.borrow())?;
-    if wpokt_data.is_initialized {
-        return Err(ProgramError::AccountAlreadyInitialized);
-    }
-
     wpokt_data.minter = *_initial_minter;
     wpokt_data.mint = *mint_account.key;
     wpokt_data.is_initialized = true;
-
     wpokt_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
     Ok(())
 }
@@ -398,66 +393,91 @@ fn transfer_with_authorization(
     _value: u64,
     _valid_after: u64,
     _valid_before: u64,
-    _nonce: String,
+    _nonce: [u8; 32],
 ) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let authorization_state_account = next_account_info(account_info_iter)?;
-    // let mint_account = next_account_info(account_info_iter)?;
-    // let src_token_account = next_account_info(account_info_iter)?;
-    // let src_token_account_owner_account = next_account_info(account_info_iter)?;
-    // let destination_account = next_account_info(account_info_iter)?;
-    // let token_program_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let to = next_account_info(account_info_iter)?; // token auth of 'to_token_account' - the delegate
+    let authorization_state_account = next_account_info(account_info_iter)?;
+    let mint_account = next_account_info(account_info_iter)?;
+    let from_token_account = next_account_info(account_info_iter)?;
+    let from = next_account_info(account_info_iter)?;
+    let to_token_account = next_account_info(account_info_iter)?;
+    let token_program_account = next_account_info(account_info_iter)?;
 
-    // let clock = Clock::get()?;
-    // let current_timestamp = clock.unix_timestamp as u64;
+    //verify correct auth state acc
+    let (auth_state_pda, _) = AuthorizationStateDictionary::generate_pda_key(
+        _program_id,
+        from.key,
+        mint_account.key,
+        &_nonce,
+    );
+    if !auth_state_pda.eq(authorization_state_account.key) {
+        return Err(ProgramError::Custom(
+            WPOKTError::AuthStateDictionaryItemKeyMismatch as u32,
+        ));
+    }
+    // verify payer signature
+    if !to.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // if current_timestamp >= _valid_before {
-    //     return Err(ProgramError::Custom(WPOKTError::AuthExpired as u32));
-    // }
-    // if current_timestamp <= _valid_after {
-    //     return Err(ProgramError::Custom(WPOKTError::AuthNotYetValid as u32));
-    // }
+    // validate transaction validity
+    let clock = Clock::get()?;
+    let current_timestamp: u64 = clock.unix_timestamp.try_into().unwrap();
 
-    // let mut authorization_state_data = AuthorizationStateDictionary::unpack_from_slice(
-    //     &authorization_state_account.data.borrow(),
-    // )?;
+    if current_timestamp >= _valid_before {
+        return Err(ProgramError::Custom(WPOKTError::AuthExpired as u32));
+    }
+    if current_timestamp <= _valid_after {
+        return Err(ProgramError::Custom(WPOKTError::AuthNotYetValid as u32));
+    }
+    // validate and update authorization state
+    let mut authorization_state_data = AuthorizationStateDictionary::unpack_from_slice(
+        &authorization_state_account.data.borrow(),
+    )?;
 
-    // let auth_state = authorization_state_data
-    //     .authorization_state_dictionary
-    //     .get_mut(&AuthorizationStateDictionary::generate_key(_from, _nonce))
-    //     .unwrap();
+    if !authorization_state_data.from.eq(from.key) {
+        return Err(ProgramError::Custom(
+            WPOKTError::AuthStateDictionaryFromKeyMismatch as u32,
+        ));
+    }
 
-    // if !*auth_state {
-    //     return Err(ProgramError::Custom(WPOKTError::AuthAlreadyUsed as u32));
-    // }
+    if authorization_state_data.nonce != _nonce {
+        return Err(ProgramError::Custom(
+            WPOKTError::AuthStateDictionaryNonceMismatch as u32,
+        ));
+    }
 
-    // *auth_state = true;
-    // authorization_state_data
-    //     .pack_into_slice(&mut &mut authorization_state_account.data.borrow_mut()[..]);
+    if authorization_state_data.authorization {
+        return Err(ProgramError::Custom(WPOKTError::AuthAlreadyUsed as u32));
+    }
 
-    // let mint_data = spl_token::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
-    // let transfer_ix = spl_token::instruction::transfer_checked(
-    //     &spl_token::id(),
-    //     src_token_account.key,
-    //     mint_account.key,
-    //     destination_account.key,
-    //     src_token_account_owner_account.key,
-    //     &[src_token_account_owner_account.key],
-    //     _value,
-    //     mint_data.decimals,
-    // )?;
+    authorization_state_data.authorization = true;
+    authorization_state_data
+        .pack_into_slice(&mut &mut authorization_state_account.data.borrow_mut()[..]);
+    // transfer tokens
+    let mint_data = spl_token::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
+    let transfer_ix = spl_token::instruction::transfer_checked(
+        &spl_token::id(),
+        from_token_account.key,
+        mint_account.key,
+        to_token_account.key,
+        from.key,
+        &[from.key],
+        _value,
+        mint_data.decimals,
+    )?;
 
-    // program::invoke(
-    //     &transfer_ix,
-    //     &[
-    //         src_token_account.clone(),
-    //         mint_account.clone(),
-    //         destination_account.clone(),
-    //         src_token_account_owner_account.clone(),
-    //         token_program_account.clone(),
-    //     ],
-    // )?;
-
+    program::invoke(
+        &transfer_ix,
+        &[
+            from_token_account.clone(),
+            mint_account.clone(),
+            to_token_account.clone(),
+            from.clone(),
+            token_program_account.clone(),
+        ],
+    )?;
     Ok(())
 }
 
@@ -589,17 +609,13 @@ fn initialize_authorization_state_pda_account(
         &[seeds],
     )?;
 
-    msg!("Deserialize AuthState account");
-    // deserialize this bih
     let mut auth_state_data = AuthorizationStateDictionary::unpack_from_slice(
         &mut &mut authorization_state_account.data.borrow_mut()[..],
     )?;
     auth_state_data.nonce = *_nonce;
     auth_state_data.authorization = false;
     auth_state_data.from = *_from;
-    // serialize this bih
     auth_state_data.pack_into_slice(&mut &mut authorization_state_account.data.borrow_mut()[..]);
-    msg!("Serialize AuthState account");
 
     Ok(())
 }
