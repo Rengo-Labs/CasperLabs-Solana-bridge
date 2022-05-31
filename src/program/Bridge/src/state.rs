@@ -347,7 +347,10 @@ impl Pack for TokenAddedDictionary {
 impl GeneratePdaKey for TokenAddedDictionary {
     /// seeds[0] index: u64
     fn generate_pda_key(program_id: &Pubkey, seeds: &Vec<&[u8]>) -> (Pubkey, u8) {
-        Pubkey::find_program_address(&[seeds[0], b"bridge", b"TokenAddedDictionary"], program_id)
+        Pubkey::find_program_address(
+            &[seeds[0], b"bridge", b"token_added_dictionary"],
+            program_id,
+        )
     }
 }
 impl TokenAddedDictionary {
@@ -379,23 +382,4 @@ impl Pack for CalcuateFeeResult {
 
         *fee_dst = fee.to_le_bytes();
     }
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Default)]
-pub struct TokenData {
-    pub token_address: Pubkey,
-    pub exists: bool,
-    pub paused: bool,
-    // total fees collected
-    pub total_fees_collected: u64,
-    // current fee
-    pub fee: u64,
-    // fee update time
-    pub fee_update_time: u64,
-    // new fee
-    pub new_fee: u64,
-    // daily limit
-    pub limit: u64,
-    // daily limit time
-    pub limit_timestamp: u64,
 }

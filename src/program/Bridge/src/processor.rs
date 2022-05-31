@@ -2,10 +2,10 @@
 use crate::error::BridgeError;
 use crate::instruction::BridgeInstruction;
 use crate::state::{
-    Bridge, CalcuateFeeResult, ClaimedDictionary, DailyTokenClaimsDictionary, GeneratePdaKey,
-    TokenAddedDictionary, TokenData, TokenListDictionary,
+    Bridge, ClaimedDictionary, DailyTokenClaimsDictionary, GeneratePdaKey, TokenAddedDictionary,
+    TokenListDictionary,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshDeserialize;
 use solana_program::program_pack::{Pack, Sealed};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -20,7 +20,6 @@ use solana_program::{
 };
 
 use spl_token;
-use std::collections::BTreeMap;
 
 pub const TEN_POW_18: u64 = 1000000000000000000;
 
@@ -226,7 +225,7 @@ fn construct(
     )?;
     let _ = pda_acc_info.pop();
 
-     let mut token_added_data =
+    let mut token_added_data =
         TokenAddedDictionary::unpack_from_slice(&token_added_account.data.borrow())?;
     token_added_data.token_added = true;
     token_added_data.pack_into_slice(&mut &mut token_added_account.data.borrow_mut()[..]);
@@ -235,7 +234,11 @@ fn construct(
 
     let token_list_pda_seeds = TokenListDictionary::generate_pda_seeds_vec(1);
     pda_acc_info.push(token_list_account.clone());
-    create_pda_account::<TokenListDictionary>(_program_id, pda_acc_info.as_slice(), token_list_pda_seeds)?;
+    create_pda_account::<TokenListDictionary>(
+        _program_id,
+        pda_acc_info.as_slice(),
+        token_list_pda_seeds,
+    )?;
     let _ = pda_acc_info.pop();
 
     let clock = Clock::get()?;
