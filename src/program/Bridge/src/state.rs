@@ -132,7 +132,7 @@ impl GeneratePdaKey for ClaimedDictionary {
     }
 }
 impl ClaimedDictionary {
-    fn generate_pda_seeds_vec(chain_id: u64, index: u64) -> Vec<&'static [u8]> {
+    pub fn generate_pda_seeds_vec(chain_id: u64, index: u64) -> Vec<&'static [u8]> {
         vec![
             chain_id.to_le_bytes().as_ref(),
             index.to_le_bytes().as_ref(),
@@ -191,7 +191,7 @@ impl GeneratePdaKey for TokenListDictionary {
     }
 }
 impl TokenListDictionary {
-    fn generate_pda_seeds_vec(index: u64) -> Vec<&'static [u8]> {
+    pub fn generate_pda_seeds_vec(index: u64) -> Vec<&'static [u8]> {
         vec![index.to_le_bytes().as_ref()]
     }
 }
@@ -314,7 +314,7 @@ impl GeneratePdaKey for DailyTokenClaimsDictionary {
     }
 }
 impl DailyTokenClaimsDictionary {
-    fn generate_pda_seeds_vec(index: u64) -> Vec<&'static [u8]> {
+    pub fn generate_pda_seeds_vec(index: u64) -> Vec<&'static [u8]> {
         vec![index.to_le_bytes().as_ref()]
     }
 }
@@ -351,7 +351,7 @@ impl GeneratePdaKey for TokenAddedDictionary {
     }
 }
 impl TokenAddedDictionary {
-    fn generate_pda_seeds_vec(token_mint_address: &Pubkey) -> Vec<&'static [u8]> {
+    pub fn generate_pda_seeds_vec(token_mint_address: &Pubkey) -> Vec<&'static [u8]> {
         vec![token_mint_address.to_bytes().as_ref()]
     }
 }
