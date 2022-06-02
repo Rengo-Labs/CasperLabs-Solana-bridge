@@ -3,17 +3,20 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
+    "deploy:bridge": "solana program deploy target/deploy/bridge.so",
     "deploy:wpokt": "solana program deploy target/deploy/wpokt.so",
     "deploy:w_pokt": "solana program deploy target/deploy/w_pokt.so",
+    "start-client:bridge": "npm run deploy:bridge && ts-node src/client/bridge.ts",
     "start-client:wpokt": "npm run deploy:wpokt && ts-node src/client/wpokt.ts",
     "start-client:w_pokt": "npm run deploy:w_pokt && ts-node src/client/w_pokt.ts",
+    "test-client:bridge": "start-server-and-test 'solana-test-validator --reset --quiet' http://localhost:8899/health start-client:bridge",
     "test-client:wpokt": "start-server-and-test 'solana-test-validator --reset --quiet' http://localhost:8899/health start-client:wpokt",
     "test-client:w_pokt": "start-server-and-test 'solana-test-validator --reset --quiet' http://localhost:8899/health start-client:w_pokt",
     "test-host:program": "cargo test-bpf --manifest-path=./Cargo.toml",
     "build:program": "cargo build-bpf --manifest-path=./Cargo.toml",
     "clean:program": "cargo clean --manifest-path=./Cargo.toml && rm -rf ./build",
     "fmt:program": "cargo fmt --manifest-path=./Cargo.toml --all",
-    "test": "npm run build:program && npm run start-client:wpokt"
+    "test": "npm run build:program && npm run start-client:bridge"
   },
   "repository": {
     "type": "git",

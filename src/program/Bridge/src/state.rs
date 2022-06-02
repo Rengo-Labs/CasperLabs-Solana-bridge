@@ -12,6 +12,7 @@ const TRACKING_CHUNK_BYTES: usize = 10235;
 
 pub trait GeneratePdaKey {
     fn generate_pda_key(program_id: &Pubkey, seeds: &Vec<&[u8]>) -> (Pubkey, u8);
+    fn get_constants() -> Vec<String>;
 }
 
 #[derive(Debug, Default, Clone)]
@@ -109,11 +110,14 @@ impl IsInitialized for Bridge {
         self.is_initialized
     }
 }
-
-impl GeneratePdaKey for Bridge {
+impl Bridge {
     /// seeds are unused
-    fn generate_pda_key(program_id: &Pubkey, _seeds: &Vec<&[u8]>) -> (Pubkey, u8) {
-        Pubkey::find_program_address(&[b"bridge", b"signature_account"], program_id)
+    pub fn generate_pda_key(program_id: &Pubkey) -> (Pubkey, u8, String, String) {
+        let seed1 = "bridge";
+        let seed2 = "signature_account";
+        let (pda, seed) =
+            Pubkey::find_program_address(&[seed1.as_bytes(), seed2.as_bytes()], program_id);
+        (pda, seed, seed1.to_string(), seed2.to_string())
     }
 }
 
@@ -122,6 +126,12 @@ pub struct ClaimedDictionary {
     claimed: bool,
 }
 impl GeneratePdaKey for ClaimedDictionary {
+    fn get_constants() -> Vec<String> {
+        vec![
+            String::from("bridge"),
+            String::from("claimed_dictionary_key"),
+        ]
+    }
     /// seeds[0] chain_ud: u64
     /// seeds[1] index: u64
     fn generate_pda_key(program_id: &Pubkey, seeds: &Vec<&[u8]>) -> (Pubkey, u8) {
@@ -131,14 +141,14 @@ impl GeneratePdaKey for ClaimedDictionary {
         )
     }
 }
-impl ClaimedDictionary {
-    pub fn generate_pda_seeds_vec(chain_id: u64, index: u64) -> Vec<&'static [u8]> {
-        vec![
-            chain_id.to_le_bytes().as_ref(),
-            index.to_le_bytes().as_ref(),
-        ]
-    }
-}
+// impl ClaimedDictionary {
+//     pub fn generate_pda_seeds_vec(chain_id: u64, index: u64) -> Vec<&'static [u8]> {
+//         vec![
+//             chain_id.to_le_bytes().as_ref(),
+//             index.to_le_bytes().as_ref(),
+//         ]
+//     }
+// }
 
 impl Sealed for ClaimedDictionary {}
 impl Pack for ClaimedDictionary {
@@ -182,6 +192,12 @@ pub struct TokenListDictionary {
     pub limit_timestamp: u64, //8B
 }
 impl GeneratePdaKey for TokenListDictionary {
+    fn get_constants() -> Vec<String> {
+        vec![
+            String::from("bridge"),
+            String::from("token_list_dictionary_key"),
+        ]
+    }
     /// seeds[0] index: u64
     fn generate_pda_key(program_id: &Pubkey, seeds: &Vec<&[u8]>) -> (Pubkey, u8) {
         Pubkey::find_program_address(
@@ -190,11 +206,11 @@ impl GeneratePdaKey for TokenListDictionary {
         )
     }
 }
-impl TokenListDictionary {
-    pub fn generate_pda_seeds_vec(index: u64) -> Vec<&'static [u8]> {
-        vec![index.to_le_bytes().as_ref()]
-    }
-}
+// impl TokenListDictionary {
+//     pub fn generate_pda_seeds_vec(index: u64) -> Vec<&'static [u8]> {
+//         vec![index.to_le_bytes().as_ref()]
+//     }
+// }
 
 impl Sealed for TokenListDictionary {}
 impl Pack for TokenListDictionary {
@@ -305,6 +321,12 @@ impl Pack for DailyTokenClaimsDictionary {
 }
 
 impl GeneratePdaKey for DailyTokenClaimsDictionary {
+    fn get_constants() -> Vec<String> {
+        vec![
+            String::from("bridge"),
+            String::from("daily_token_claims_dictionary_key"),
+        ]
+    }
     /// seeds[0] index: u64
     fn generate_pda_key(program_id: &Pubkey, seeds: &Vec<&[u8]>) -> (Pubkey, u8) {
         Pubkey::find_program_address(
@@ -313,11 +335,11 @@ impl GeneratePdaKey for DailyTokenClaimsDictionary {
         )
     }
 }
-impl DailyTokenClaimsDictionary {
-    pub fn generate_pda_seeds_vec(index: u64) -> Vec<&'static [u8]> {
-        vec![index.to_le_bytes().as_ref()]
-    }
-}
+// impl DailyTokenClaimsDictionary {
+//     pub fn generate_pda_seeds_vec(index: u64) -> Vec<&'static [u8]> {
+//         vec![index.to_le_bytes().as_ref()]
+//     }
+// }
 
 #[derive(Default, Debug, Clone)]
 pub struct TokenAddedDictionary {
@@ -345,6 +367,12 @@ impl Pack for TokenAddedDictionary {
     }
 }
 impl GeneratePdaKey for TokenAddedDictionary {
+    fn get_constants() -> Vec<String> {
+        vec![
+            String::from("bridge"),
+            String::from("token_added_dictionary"),
+        ]
+    }
     /// seeds[0] index: u64
     fn generate_pda_key(program_id: &Pubkey, seeds: &Vec<&[u8]>) -> (Pubkey, u8) {
         Pubkey::find_program_address(
@@ -353,11 +381,11 @@ impl GeneratePdaKey for TokenAddedDictionary {
         )
     }
 }
-impl TokenAddedDictionary {
-    pub fn generate_pda_seeds_vec(token_mint_address: &Pubkey) -> Vec<&'static [u8]> {
-        vec![token_mint_address.to_bytes().as_ref()]
-    }
-}
+// impl TokenAddedDictionary {
+//     pub fn generate_pda_seeds_vec(token_mint_address: &Pubkey) -> Vec<&'static [u8]> {
+//         vec![token_mint_address.to_bytes().as_ref()]
+//     }
+// }
 
 #[derive(Default, Debug, Clone)]
 pub struct CalcuateFeeResult {

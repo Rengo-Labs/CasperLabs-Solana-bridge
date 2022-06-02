@@ -11,7 +11,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::{Clock, SECONDS_PER_DAY},
     entrypoint::ProgramResult,
-    program,
+    msg, program,
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
@@ -39,14 +39,17 @@ impl Processor {
                 verify_address,
                 chain_id,
                 stable_fee,
-            } => construct(
-                program_id,
-                accounts,
-                &w_pokt_address,
-                &verify_address,
-                &chain_id,
-                &stable_fee,
-            ),
+            } => {
+                msg!("BridgeInstruction::Construct");
+                construct(
+                    program_id,
+                    accounts,
+                    &w_pokt_address,
+                    &verify_address,
+                    &chain_id,
+                    &stable_fee,
+                )
+            }
             BridgeInstruction::TransferRequest {
                 token_index,
                 to,
@@ -122,56 +125,63 @@ impl Processor {
     }
 }
 
-/// Accounts Expected:
-///
-/// 0. [signer] payer_account
-/// 1. [] system_account
-/// 2. [] rent_sysvar_account
-/// 3. [] pda_account_info
-fn create_pda_account<T: Pack + Sealed + GeneratePdaKey>(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    seeds: Vec<&[u8]>,
-) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
-    let payer_account = next_account_info(account_info_iter)?;
-    let system_account = next_account_info(account_info_iter)?;
-    let rent_sysvar_account = next_account_info(account_info_iter)?;
-    let pda_account_info = next_account_info(account_info_iter)?;
+// /// Accounts Expected:
+// ///
+// /// 0. [signer] payer_account
+// /// 1. [] system_account
+// /// 2. [] rent_sysvar_account
+// /// 3. [] pda_account_info
+// fn create_pda_account<T: Pack + Sealed + GeneratePdaKey>(
+//     program_id: &Pubkey,
+//     accounts: &[AccountInfo],
+//     seeds: Vec<&[u8]>,
+// ) -> ProgramResult {
+//     let account_info_iter = &mut accounts.iter();
+//     let payer_account = next_account_info(account_info_iter)?;
+//     let system_account = next_account_info(account_info_iter)?;
+//     let rent_sysvar_account = next_account_info(account_info_iter)?;
+//     let pda_account_info = next_account_info(account_info_iter)?;
 
-    let (pda, bump) = T::generate_pda_key(program_id, &seeds);
-    if !pda_account_info.key.eq(&pda) {
-        return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
-    }
+//     let (pda, bump) = T::generate_pda_key(program_id, &seeds);
+//     if !pda_account_info.key.eq(&pda) {
+//         return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
+//     }
 
-    let mut signature_seeds: Vec<&[u8]> = vec![];
-    let bump_ref = &[bump];
-    for item in seeds {
-        signature_seeds.push(item);
-    }
-    signature_seeds.push(bump_ref);
+//     let mut signature_seeds: Vec<&[u8]> = vec![];
+//     let bump_ref = &[bump];
+//     for item in seeds {
+//         signature_seeds.push(item);
+//     }
+//     signature_seeds.push(bump_ref);
 
-    let rent_sysvar = Rent::from_account_info(rent_sysvar_account)?;
-    let data_size = std::mem::size_of::<T>();
-    let ix = system_instruction::create_account(
-        payer_account.key,
-        pda_account_info.key,
-        rent_sysvar.minimum_balance(data_size),
-        data_size.try_into().unwrap(),
-        program_id,
-    );
+//     // get string constant seeds
+//     let str_const = T::get_constants(); // of lengts 2
+//     let ref1: &[u8] = str_const[0].as_ref();
+//     signature_seeds.push(ref1);
+//     let ref2: &[u8] = str_const[1].as_ref();
+//     signature_seeds.push(ref2);
 
-    program::invoke_signed(
-        &ix,
-        &[
-            pda_account_info.clone(),
-            payer_account.clone(),
-            system_account.clone(),
-        ],
-        &[signature_seeds.as_slice()],
-    )?;
-    Ok(())
-}
+//     let rent_sysvar = Rent::from_account_info(rent_sysvar_account)?;
+//     let data_size = std::mem::size_of::<T>();
+//     let ix = system_instruction::create_account(
+//         payer_account.key,
+//         pda_account_info.key,
+//         rent_sysvar.minimum_balance(data_size),
+//         data_size.try_into().unwrap(),
+//         program_id,
+//     );
+
+//     program::invoke_signed(
+//         &ix,
+//         &[
+//             pda_account_info.clone(),
+//             payer_account.clone(),
+//             system_account.clone(),
+//         ],
+//         &[signature_seeds.as_slice()],
+//     )?;
+//     Ok(())
+// }
 
 fn construct(
     _program_id: &Pubkey,
@@ -189,79 +199,98 @@ fn construct(
     let token_list_account = next_account_info(account_info_iter)?;
     let system_program_account = next_account_info(account_info_iter)?;
     let rent_system_account = next_account_info(account_info_iter)?;
+    let rent_sysvar = Rent::from_account_info(rent_system_account)?;
+
     if !owner_account.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // accountInfo slice for PDA creation
-    let mut pda_acc_info = vec![
-        owner_account.clone(),
-        system_program_account.clone(),
-        rent_system_account.clone(),
-    ];
+    let (bridgePda, bridgebump, bridgeSeed1, bridgeSeed2) = Bridge::generate_pda_key(_program_id);
+    if !bridge_account.key.eq(&bridgePda){
+        return Err(ProgramError::InvalidSeeds);
+    }
 
-    // create and initialize bridge PDA account
-    pda_acc_info.push(bridge_account.clone());
-    create_pda_account::<Bridge>(_program_id, pda_acc_info.as_slice(), vec![])?;
-    let _ = pda_acc_info.pop();
-
-    let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    bridge_data.owner = *owner_account.key;
-    bridge_data.fee_update_duration = 1;
-    bridge_data.stable_fee = *_stable_fee;
-    bridge_data.chain_id = *_chain_id;
-    bridge_data.verify_address = *_verify_address;
-    bridge_data.is_initialized = true;
-    bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
-
-    // create and initialize TokenAdded dictionary item account
-
-    let token_added_dict_seeds = TokenAddedDictionary::generate_pda_seeds_vec(_w_pokt_address);
-    pda_acc_info.push(token_added_account.clone());
-    create_pda_account::<TokenAddedDictionary>(
+    let create_bridge_pda_ix = system_instruction::create_account(
+        owner_account.key,
+        bridge_account.key,
+        rent_sysvar.minimum_balance(Bridge::LEN),
+        Bridge::LEN.try_into().unwrap(),
         _program_id,
-        pda_acc_info.as_slice(),
-        token_added_dict_seeds,
-    )?;
-    let _ = pda_acc_info.pop();
+    );
+    // // accountInfo slice for PDA creation
+    // let mut pda_acc_info = vec![
+    //     owner_account.clone(),
+    //     system_program_account.clone(),
+    //     rent_system_account.clone(),
+    // ];
 
-    let mut token_added_data =
-        TokenAddedDictionary::unpack_from_slice(&token_added_account.data.borrow())?;
-    token_added_data.token_added = true;
-    token_added_data.pack_into_slice(&mut &mut token_added_account.data.borrow_mut()[..]);
+    // // create and initialize bridge PDA account
+    // pda_acc_info.push(bridge_account.clone());
+    // create_pda_account::<Bridge>(_program_id, pda_acc_info.as_slice(), vec![])?;
+    // let _ = pda_acc_info.pop();
+    // msg!("Bridge PDA account created. ");
 
-    // create and initialize TokenList dictionary item account
+    // let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    // bridge_data.owner = *owner_account.key;
+    // bridge_data.fee_update_duration = 1;
+    // bridge_data.stable_fee = *_stable_fee;
+    // bridge_data.chain_id = *_chain_id;
+    // bridge_data.verify_address = *_verify_address;
+    // bridge_data.is_initialized = true;
+    // bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
 
-    let token_list_pda_seeds = TokenListDictionary::generate_pda_seeds_vec(1);
-    pda_acc_info.push(token_list_account.clone());
-    create_pda_account::<TokenListDictionary>(
-        _program_id,
-        pda_acc_info.as_slice(),
-        token_list_pda_seeds,
-    )?;
-    let _ = pda_acc_info.pop();
+    // // create and initialize TokenAdded dictionary item account
 
-    let clock = Clock::get()?;
-    let current_timestamp = clock.unix_timestamp;
-    let token_data_list = TokenListDictionary {
-        is_initialized: true,
-        token_address: *_w_pokt_address,
-        exists: true,
-        paused: false,
-        // total fees collected
-        total_fees_collected: 0,
-        // current fee
-        fee: 0,
-        // fee update time
-        fee_update_time: 0,
-        // new fee
-        new_fee: 0,
-        // daily limit
-        limit: 0,
-        // daily limit time
-        limit_timestamp: current_timestamp as u64 + SECONDS_PER_DAY,
-    };
-    token_data_list.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+    // // let token_added_dict_seeds = TokenAddedDictionary::generate_pda_seeds_vec(_w_pokt_address);
+    // let token_added_dict_seeds: Vec<&[u8]> = vec![_w_pokt_address.as_ref()];
+    // pda_acc_info.push(token_added_account.clone());
+    // create_pda_account::<TokenAddedDictionary>(
+    //     _program_id,
+    //     pda_acc_info.as_slice(),
+    //     token_added_dict_seeds,
+    // )?;
+    // let _ = pda_acc_info.pop();
+
+    // let mut token_added_data =
+    //     TokenAddedDictionary::unpack_from_slice(&token_added_account.data.borrow())?;
+    // token_added_data.token_added = true;
+    // token_added_data.pack_into_slice(&mut &mut token_added_account.data.borrow_mut()[..]);
+
+    // // create and initialize TokenList dictionary item account
+
+    // // let token_list_pda_seeds = TokenListDictionary::generate_pda_seeds_vec(1);
+    // let token_list_index_bytes: u64 = 1;
+    // let token_list_index_bytes = token_list_index_bytes.to_le_bytes();
+    // let token_list_pda_seeds: Vec<&[u8]> = vec![token_list_index_bytes.as_ref()];
+    // pda_acc_info.push(token_list_account.clone());
+    // create_pda_account::<TokenListDictionary>(
+    //     _program_id,
+    //     pda_acc_info.as_slice(),
+    //     token_list_pda_seeds,
+    // )?;
+    // let _ = pda_acc_info.pop();
+
+    // let clock = Clock::get()?;
+    // let current_timestamp = clock.unix_timestamp;
+    // let token_data_list = TokenListDictionary {
+    //     is_initialized: true,
+    //     token_address: *_w_pokt_address,
+    //     exists: true,
+    //     paused: false,
+    //     // total fees collected
+    //     total_fees_collected: 0,
+    //     // current fee
+    //     fee: 0,
+    //     // fee update time
+    //     fee_update_time: 0,
+    //     // new fee
+    //     new_fee: 0,
+    //     // daily limit
+    //     limit: 0,
+    //     // daily limit time
+    //     limit_timestamp: current_timestamp as u64 + SECONDS_PER_DAY,
+    // };
+    // token_data_list.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
 
     // let mut token_list_data =
     //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;

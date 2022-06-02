@@ -1,5 +1,5 @@
 import { PublicKey } from "@solana/web3.js";
-import { nu64, struct } from "@solana/buffer-layout";
+import { nu64, struct,u8 } from "@solana/buffer-layout";
 import { publicKey } from "@solana/buffer-layout-utils";
 
 export enum BridgeInstruction {
@@ -109,6 +109,7 @@ export enum BridgeInstruction {
 }
 
 export interface Construct {
+  instruction: number,
   wPoktAddress: PublicKey;
   verifyAddress: PublicKey;
   chainId: number;
@@ -116,6 +117,7 @@ export interface Construct {
 }
 
 export const CONSTRUCT_LAYOUT = struct<Construct>([
+  u8("instruction"),
   publicKey("wPoktAddress"),
   publicKey("verifyAddress"),
   nu64("chainId"),
@@ -123,6 +125,7 @@ export const CONSTRUCT_LAYOUT = struct<Construct>([
 ]);
 
 export interface TransferRequest {
+  instruction: number,
   tokenIndex: number;
   to: PublicKey;
   amount: number;
@@ -130,6 +133,7 @@ export interface TransferRequest {
 }
 
 export const TRANSFER_REQUEST_LAYOUT = struct<TransferRequest>([
+  u8("instruction"),
   nu64("tokenIndex"),
   publicKey("to"),
   nu64("amount"),
@@ -137,6 +141,7 @@ export const TRANSFER_REQUEST_LAYOUT = struct<TransferRequest>([
 ]);
 
 export interface TransferReceipt {
+  instruction: number,
   tokenIndex: number;
   from: PublicKey;
   to: PublicKey;
@@ -147,6 +152,7 @@ export interface TransferReceipt {
 }
 
 export const TRANSFER_RECEIPT_LAYOUT = struct<TransferReceipt>([
+  u8("instruction"),
   nu64("tokenIndex"),
   publicKey("from"),
   publicKey("to"),
