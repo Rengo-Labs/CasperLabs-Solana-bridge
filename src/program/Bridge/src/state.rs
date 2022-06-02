@@ -4,6 +4,7 @@ use solana_program::{
     program_error::ProgramError,
     program_pack::{IsInitialized, Pack, Sealed},
     pubkey::Pubkey,
+    msg
 };
 
 const INITIALIZED_BYTES: usize = 1;
@@ -191,26 +192,25 @@ pub struct TokenListDictionary {
     // daily limit time
     pub limit_timestamp: u64, //8B
 }
-impl GeneratePdaKey for TokenListDictionary {
-    fn get_constants() -> Vec<String> {
-        vec![
-            String::from("bridge"),
-            String::from("token_list_dictionary_key"),
-        ]
-    }
-    /// seeds[0] index: u64
-    fn generate_pda_key(program_id: &Pubkey, seeds: &Vec<&[u8]>) -> (Pubkey, u8) {
-        Pubkey::find_program_address(
-            &[seeds[0], b"bridge", b"token_list_dictionary_key"],
+
+impl TokenListDictionary {
+    pub fn generate_pda_key(program_id: &Pubkey, index: u64) -> (Pubkey, u8, String, String) {
+        let seed1 = "bridge";
+        let seed2 = "token_list_dictionary_key";
+        let index_bytes = index.to_le_bytes();
+        let seeds = &[
+            index_bytes.as_ref(),
+            seed1.as_bytes(),
+            seed2.as_bytes(),
+        ];
+        msg!("token list pda key seeds buffer: {:?}", seeds);
+        let (pda, bump) = Pubkey::find_program_address(
+            seeds,
             program_id,
-        )
+        );
+        (pda, bump, seed1.to_string(), seed2.to_string())
     }
 }
-// impl TokenListDictionary {
-//     pub fn generate_pda_seeds_vec(index: u64) -> Vec<&'static [u8]> {
-//         vec![index.to_le_bytes().as_ref()]
-//     }
-// }
 
 impl Sealed for TokenListDictionary {}
 impl Pack for TokenListDictionary {
@@ -366,26 +366,25 @@ impl Pack for TokenAddedDictionary {
         dst[0] = self.token_added as u8;
     }
 }
-impl GeneratePdaKey for TokenAddedDictionary {
-    fn get_constants() -> Vec<String> {
-        vec![
-            String::from("bridge"),
-            String::from("token_added_dictionary"),
-        ]
-    }
-    /// seeds[0] index: u64
-    fn generate_pda_key(program_id: &Pubkey, seeds: &Vec<&[u8]>) -> (Pubkey, u8) {
-        Pubkey::find_program_address(
-            &[seeds[0], b"bridge", b"token_added_dictionary"],
+
+impl TokenAddedDictionary {
+    pub fn generate_pda_key(
+        program_id: &Pubkey,
+        token_mint_address: &Pubkey,
+    ) -> (Pubkey, u8, String, String) {
+        let seed1 = "bridge";
+        let seed2 = "token_added_dictionary_key";
+        let (pda, bump) = Pubkey::find_program_address(
+            &[
+                token_mint_address.as_ref(),
+                seed1.as_bytes(),
+                seed2.as_bytes(),
+            ],
             program_id,
-        )
+        );
+        (pda, bump, seed1.to_string(), seed2.to_string())
     }
 }
-// impl TokenAddedDictionary {
-//     pub fn generate_pda_seeds_vec(token_mint_address: &Pubkey) -> Vec<&'static [u8]> {
-//         vec![token_mint_address.to_bytes().as_ref()]
-//     }
-// }
 
 #[derive(Default, Debug, Clone)]
 pub struct CalcuateFeeResult {

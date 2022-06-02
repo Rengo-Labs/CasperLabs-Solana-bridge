@@ -2,11 +2,11 @@
 use crate::error::BridgeError;
 use crate::instruction::BridgeInstruction;
 use crate::state::{
-    Bridge, ClaimedDictionary, DailyTokenClaimsDictionary, GeneratePdaKey, TokenAddedDictionary,
+    Bridge, ClaimedDictionary, DailyTokenClaimsDictionary, TokenAddedDictionary,
     TokenListDictionary,
 };
 use borsh::BorshDeserialize;
-use solana_program::program_pack::{Pack, Sealed};
+use solana_program::program_pack::{Pack};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::{Clock, SECONDS_PER_DAY},
@@ -205,8 +205,10 @@ fn construct(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let (bridgePda, bridgebump, bridgeSeed1, bridgeSeed2) = Bridge::generate_pda_key(_program_id);
-    if !bridge_account.key.eq(&bridgePda){
+    // create Bridge PDA account
+    let (bridge_pda, bridge_bump, bridge_seed1, bridge_seed2) =
+        Bridge::generate_pda_key(_program_id);
+    if !bridge_account.key.eq(&bridge_pda) {
         return Err(ProgramError::InvalidSeeds);
     }
 
@@ -217,81 +219,116 @@ fn construct(
         Bridge::LEN.try_into().unwrap(),
         _program_id,
     );
-    // // accountInfo slice for PDA creation
-    // let mut pda_acc_info = vec![
-    //     owner_account.clone(),
-    //     system_program_account.clone(),
-    //     rent_system_account.clone(),
-    // ];
+    program::invoke_signed(
+        &create_bridge_pda_ix,
+        &[
+            owner_account.clone(),
+            bridge_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[&[bridge_seed1.as_ref(), bridge_seed2.as_ref(), &[bridge_bump]]],
+    )?;
+    msg!("Bridge account created.");
+    // initialize bridge pda account
+    let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    bridge_data.owner = *owner_account.key;
+    bridge_data.fee_update_duration = 1;
+    bridge_data.stable_fee = *_stable_fee;
+    bridge_data.chain_id = *_chain_id;
+    bridge_data.verify_address = *_verify_address;
+    bridge_data.is_initialized = true;
+    bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
+    msg!("Bridge account initialized.");
 
-    // // create and initialize bridge PDA account
-    // pda_acc_info.push(bridge_account.clone());
-    // create_pda_account::<Bridge>(_program_id, pda_acc_info.as_slice(), vec![])?;
-    // let _ = pda_acc_info.pop();
-    // msg!("Bridge PDA account created. ");
+    // create and initialize TokenAdded dictionary item account
+    let (token_added_pda, token_added_bump, token_added_seed1, token_added_seed2) =
+        TokenAddedDictionary::generate_pda_key(_program_id, _w_pokt_address);
+    if !token_added_account.key.eq(&token_added_pda) {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
-    // let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    // bridge_data.owner = *owner_account.key;
-    // bridge_data.fee_update_duration = 1;
-    // bridge_data.stable_fee = *_stable_fee;
-    // bridge_data.chain_id = *_chain_id;
-    // bridge_data.verify_address = *_verify_address;
-    // bridge_data.is_initialized = true;
-    // bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
+    let create_token_added_pda_ix = system_instruction::create_account(
+        owner_account.key,
+        token_added_account.key,
+        rent_sysvar.minimum_balance(TokenAddedDictionary::LEN),
+        TokenAddedDictionary::LEN.try_into().unwrap(),
+        _program_id,
+    );
+    program::invoke_signed(
+        &create_token_added_pda_ix,
+        &[
+            owner_account.clone(),
+            token_added_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[&[
+            _w_pokt_address.as_ref(),
+            token_added_seed1.as_ref(),
+            token_added_seed2.as_ref(),
+            &[token_added_bump],
+        ]],
+    )?;
+    msg!("TokenAdded account created.");
 
-    // // create and initialize TokenAdded dictionary item account
-
-    // // let token_added_dict_seeds = TokenAddedDictionary::generate_pda_seeds_vec(_w_pokt_address);
-    // let token_added_dict_seeds: Vec<&[u8]> = vec![_w_pokt_address.as_ref()];
-    // pda_acc_info.push(token_added_account.clone());
-    // create_pda_account::<TokenAddedDictionary>(
-    //     _program_id,
-    //     pda_acc_info.as_slice(),
-    //     token_added_dict_seeds,
-    // )?;
-    // let _ = pda_acc_info.pop();
-
-    // let mut token_added_data =
-    //     TokenAddedDictionary::unpack_from_slice(&token_added_account.data.borrow())?;
-    // token_added_data.token_added = true;
-    // token_added_data.pack_into_slice(&mut &mut token_added_account.data.borrow_mut()[..]);
+    let mut token_added_data =
+        TokenAddedDictionary::unpack_from_slice(&token_added_account.data.borrow())?;
+    token_added_data.token_added = true;
+    token_added_data.pack_into_slice(&mut &mut token_added_account.data.borrow_mut()[..]);
+    msg!("TokenAdded initialized.");
 
     // // create and initialize TokenList dictionary item account
+    let index: u64 = 1;
+    let (token_list_pda, token_list_bump, token_list_seed1, token_list_seed2) =
+        TokenListDictionary::generate_pda_key(_program_id, index);
 
-    // // let token_list_pda_seeds = TokenListDictionary::generate_pda_seeds_vec(1);
-    // let token_list_index_bytes: u64 = 1;
-    // let token_list_index_bytes = token_list_index_bytes.to_le_bytes();
-    // let token_list_pda_seeds: Vec<&[u8]> = vec![token_list_index_bytes.as_ref()];
-    // pda_acc_info.push(token_list_account.clone());
-    // create_pda_account::<TokenListDictionary>(
-    //     _program_id,
-    //     pda_acc_info.as_slice(),
-    //     token_list_pda_seeds,
-    // )?;
-    // let _ = pda_acc_info.pop();
+    if !token_list_account.key.eq(&token_list_pda) {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
-    // let clock = Clock::get()?;
-    // let current_timestamp = clock.unix_timestamp;
-    // let token_data_list = TokenListDictionary {
-    //     is_initialized: true,
-    //     token_address: *_w_pokt_address,
-    //     exists: true,
-    //     paused: false,
-    //     // total fees collected
-    //     total_fees_collected: 0,
-    //     // current fee
-    //     fee: 0,
-    //     // fee update time
-    //     fee_update_time: 0,
-    //     // new fee
-    //     new_fee: 0,
-    //     // daily limit
-    //     limit: 0,
-    //     // daily limit time
-    //     limit_timestamp: current_timestamp as u64 + SECONDS_PER_DAY,
-    // };
-    // token_data_list.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
-
+    let create_token_list_pda_ix = system_instruction::create_account(
+        owner_account.key,
+        token_list_account.key,
+        rent_sysvar.minimum_balance(TokenListDictionary::LEN),
+        TokenListDictionary::LEN.try_into().unwrap(),
+        _program_id,
+    );
+    program::invoke_signed(
+        &create_token_list_pda_ix,
+        &[
+            owner_account.clone(),
+            token_list_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[&[
+            index.to_le_bytes().as_ref(),
+            token_list_seed1.as_ref(),
+            token_list_seed2.as_ref(),
+            &[token_list_bump],
+        ]],
+    )?;
+    msg!("TokenList account created.");
+    let clock = Clock::get()?;
+    let current_timestamp = clock.unix_timestamp;
+    let token_data_list = TokenListDictionary {
+        is_initialized: true,
+        token_address: *_w_pokt_address,
+        exists: true,
+        paused: false,
+        // total fees collected
+        total_fees_collected: 0,
+        // current fee
+        fee: 0,
+        // fee update time
+        fee_update_time: 0,
+        // new fee
+        new_fee: 0,
+        // daily limit
+        limit: 0,
+        // daily limit time
+        limit_timestamp: current_timestamp as u64 + SECONDS_PER_DAY,
+    };
+    token_data_list.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+    msg!("Token list account initialized.");
     // let mut token_list_data =
     //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
 

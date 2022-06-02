@@ -27,16 +27,10 @@ export const BRIDGE_LAYOUT = struct<Bridge>([
   nu64("newStableFee"),
 ]);
 
-/**
- * Reusable as TokenAddedDictionary interface
- */
 export interface ClaimedDictionary {
   claimed: boolean;
 }
 
-/**
- * Reusable as TokenAddedDictionary Layout
- */
 export const CLAIMED_DICTIONARY_LAYOUT = struct<ClaimedDictionary>([
   bool("claimed"),
 ]);
@@ -79,3 +73,11 @@ export interface DailyTokenClaimsDictionary {
  */
 export const DAILY_TOKEN_CLAIMS_DICTIONARY_LAYOUT =
   struct<DailyTokenClaimsDictionary>([nu64("dailyTokenClaims")]);
+
+export interface TokenAddedAccount {
+  tokenAdded: boolean;
+}
+
+export const TOKEN_ADDED_ACCOUNT_LAYOUT = struct<TokenAddedAccount>([
+  bool("tokenAdded"),
+]);

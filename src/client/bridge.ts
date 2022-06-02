@@ -56,7 +56,10 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
     `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} BridgeInstruction::Construct...`
   );
   
-}
+  await Bridge.verifyConstruction(connection, payer.publicKey, bridgePda, tokenListPda, wPoktMint);
+  console.log(
+    `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} BridgeInstruction::Construct Verified...`
+  );}
 
 async function main() {
   const connection: Connection = await establishConnection();
