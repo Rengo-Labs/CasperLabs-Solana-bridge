@@ -496,134 +496,95 @@ fn transfer_receipt(
     _index: u64,
     _signature_account: &Pubkey,
 ) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let bridge_account = next_account_info(account_info_iter)?; // PDA Account
-    // let claimed_account = next_account_info(account_info_iter)?;
-    // let token_list_account = next_account_info(account_info_iter)?;
-    // let daily_token_claims_account = next_account_info(account_info_iter)?;
-    // let signature_account = next_account_info(account_info_iter)?; // The account the transaction creator signed this transaction with
-    // let mint_account = next_account_info(account_info_iter)?;
-    // let bridge_token_account = next_account_info(account_info_iter)?;
-    // let receiver_token_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let bridge_account = next_account_info(account_info_iter)?; // PDA Account
+    let claimed_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
+    let daily_token_claims_account = next_account_info(account_info_iter)?;
+    let signature_account = next_account_info(account_info_iter)?; // The account the transaction creator signed this transaction with - the Aithority of source token
+    let mint_account = next_account_info(account_info_iter)?;
+    let source_token_account = next_account_info(account_info_iter)?;
+    let receiver_token_account = next_account_info(account_info_iter)?;
 
-    // let pda_seeds: &[&[u8]] = &[b"bridge", b"global_state_account"];
-    // let (pda, bump) = Pubkey::find_program_address(pda_seeds, _program_id);
+    let (bridge_pda, _, _, _) = Bridge::generate_pda_key(_program_id);
+    if !bridge_account.key.eq(&bridge_pda) {
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
-    // if !bridge_account.key.eq(&pda) {
-    //     return Err(ProgramError::InvalidInstructionData);
-    // }
+    if !signature_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if *signature_account.key != *_signature_account {
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
-    // if !signature_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
-    // if *signature_account.key != *_signature_account {
-    //     return Err(ProgramError::InvalidInstructionData);
-    // }
-    // verify_program_accounts_ownership(_program_id, _accounts[..4].as_ref())?;
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let token_data = TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+    let mut claimed_data = ClaimedDictionary::unpack_from_slice(*claimed_account.data.borrow())?;
+    let mut daily_token_claims_data =
+        DailyTokenClaimsDictionary::unpack_from_slice(&daily_token_claims_account.data.borrow())?;
 
-    // let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    // let mut token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
-    // let mut claimed_data = ClaimedDictionary::unpack_from_slice(*claimed_account.data.borrow())?;
+    if !token_data.exists {
+        return Err(ProgramError::Custom(BridgeError::NonExistantToken as u32));
+    }
+    if token_data.paused {
+        return Err(ProgramError::Custom(BridgeError::TokenAlreadyPaused as u32));
+    }
+    if bridge_data.chain_id == _chain_id {
+        return Err(ProgramError::Custom(BridgeError::RequestToSameChain as u32));
+    }
 
-    // let token_data_bytes = match token_list_data.token_list_dictionary.get_mut(&_token_index) {
-    //     None => return Err(ProgramError::InvalidInstructionData),
-    //     Some(v) => v,
-    // };
+    if claimed_data.claimed {
+        return Err(ProgramError::Custom(BridgeError::AlreadyClaimed as u32));
+    }
 
-    // let token_data: TokenData = TokenData::try_from_slice(token_data_bytes)?;
+    if token_data.limit > 0 {
+        _update_daily_limit(
+            _program_id,
+            &[
+                token_list_account.clone(),
+                daily_token_claims_account.clone(),
+            ],
+            _index,
+        )?;
+        if daily_token_claims_data.daily_token_claims + _amount <= token_data.limit {
+            return Err(ProgramError::Custom(
+                BridgeError::ClaimAboveDailyLimit as u32,
+            ));
+        }
+    }
 
-    // if !token_data.exists {
-    //     return Err(ProgramError::Custom(BridgeError::NonExistantToken as u32));
-    // }
-    // if !token_data.paused {
-    //     return Err(ProgramError::Custom(BridgeError::TokenAlreadyPaused as u32));
-    // }
-    // if bridge_data.chain_id == _chain_id {
-    //     return Err(ProgramError::Custom(BridgeError::RequestToSameChain as u32));
-    // }
+    if token_data.token_address != *mint_account.key {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if *receiver_token_account.key != *_to {
+        return Err(ProgramError::InvalidAccountData);
+    }
 
-    // let &mut claimed = claimed_data
-    //     .claimed_dictionary
-    //     .get_mut(&ClaimedDictionary::generate_key(_chain_id, _index))
-    //     .unwrap();
-    // if !claimed {
-    //     return Err(ProgramError::Custom(BridgeError::AlreadyClaimed as u32));
-    // }
+    let transfer_ix = spl_token::instruction::transfer(
+        &spl_token::id(),
+        source_token_account.key,
+        receiver_token_account.key,
+        signature_account.key,
+        &[&signature_account.key],
+        _amount,
+    )?;
 
-    // let mut daily_token_claims_data: DailyTokenClaimsDictionary;
-    // if token_data.limit > 0 {
-    //     _update_daily_limit(
-    //         _program_id,
-    //         &[
-    //             token_list_account.clone(),
-    //             daily_token_claims_account.clone(),
-    //         ],
-    //         _index,
-    //     )?;
-    //     daily_token_claims_data = DailyTokenClaimsDictionary::unpack_from_slice(
-    //         &daily_token_claims_account.data.borrow(),
-    //     )?;
-    //     if daily_token_claims_data
-    //         .daily_token_claims_dictionary
-    //         .get(&_index)
-    //         .unwrap()
-    //         + _amount
-    //         <= token_data.limit
-    //     {
-    //         return Err(ProgramError::Custom(
-    //             BridgeError::ClaimAboveDailyLimit as u32,
-    //         ));
-    //     }
-    // }
+    program::invoke(
+        &transfer_ix,
+        &[
+            source_token_account.clone(),
+            receiver_token_account.clone(),
+            signature_account.clone(),
+        ],
+    )?;
 
-    // if token_data.token_address != *mint_account.key {
-    //     return Err(ProgramError::InvalidAccountData);
-    // }
-    // if *receiver_token_account.key != *_to {
-    //     return Err(ProgramError::InvalidAccountData);
-    // }
+    claimed_data.claimed = true;
+    daily_token_claims_data.daily_token_claims += _amount;
 
-    // let mint_data = spl_token::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
-
-    // let transfer_ix = spl_token::instruction::transfer_checked(
-    //     &spl_token::id(),
-    //     bridge_token_account.key,
-    //     mint_account.key,
-    //     receiver_token_account.key,
-    //     &pda,
-    //     &[&pda],
-    //     _amount,
-    //     mint_data.decimals,
-    // )?;
-
-    // let pda_seeds: &[&[u8]] = &[b"bridge", b"global_state_account", &[bump]];
-    // program::invoke_signed(
-    //     &transfer_ix,
-    //     &[
-    //         bridge_token_account.clone(),
-    //         mint_account.clone(),
-    //         receiver_token_account.clone(),
-    //         bridge_account.clone(),
-    //     ],
-    //     &[pda_seeds],
-    // )?;
-
-    // let _ = claimed_data
-    //     .claimed_dictionary
-    //     .insert(ClaimedDictionary::generate_key(_chain_id, _index), true)
-    //     .unwrap();
-    // daily_token_claims_data =
-    //     DailyTokenClaimsDictionary::unpack_from_slice(&daily_token_claims_account.data.borrow())?;
-    // let temp = daily_token_claims_data
-    //     .daily_token_claims_dictionary
-    //     .get_mut(&_token_index)
-    //     .unwrap();
-    // *temp = *temp + _amount;
-
-    // claimed_data.pack_into_slice(&mut &mut claimed_account.data.borrow_mut()[..]);
-    // daily_token_claims_data
-    //     .pack_into_slice(&mut &mut daily_token_claims_account.data.borrow_mut()[..]);
+    claimed_data.pack_into_slice(&mut &mut claimed_account.data.borrow_mut()[..]);
+    daily_token_claims_data
+        .pack_into_slice(&mut &mut daily_token_claims_account.data.borrow_mut()[..]);
 
     Ok(())
 }

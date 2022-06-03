@@ -119,7 +119,7 @@ impl Bridge {
 
 #[derive(Default, Debug, Clone)]
 pub struct ClaimedDictionary {
-    claimed: bool,
+    pub claimed: bool,
 }
 impl GeneratePdaKey for ClaimedDictionary {
     fn get_constants() -> Vec<String> {
