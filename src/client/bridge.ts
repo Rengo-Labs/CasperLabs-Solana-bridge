@@ -1,4 +1,11 @@
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import {
+  Connection,
+  Keypair,
+  PublicKey,
+  sendAndConfirmTransaction,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
 import {
   checkOrDeployProgram,
   establishConnection,
@@ -7,6 +14,7 @@ import {
 import path from "path";
 import * as Bridge from "./Bridge/bridge";
 import * as SPLToken from "@solana/spl-token";
+import { CalcuateFeeResultLayout } from "./Bridge/state";
 
 // program lib names
 const BRIDGE_LIB_NAME = "bridge";
@@ -17,6 +25,10 @@ const BRIDGE_LIB_NAME = "bridge";
 const PROGRAM_PATH = path.resolve(__dirname, "../../target/deploy/");
 
 async function bridgeTests(connection: Connection, payer: Keypair) {
+  const tokenIndex = 1;
+  const chainId = 1;
+  const stableFee = 1;
+
   //deploy WPOKT program
   const programId: PublicKey = await checkOrDeployProgram(
     connection,
@@ -45,6 +57,7 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
       programId,
       wPoktMint
     );
+
   await Bridge.construct(
     connection,
     programId,
@@ -54,10 +67,11 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
     tokenListPda,
     wPoktMint,
     payer.publicKey,
-    1,
-    1,
+    chainId,
+    stableFee,
     bridgeWpoktTokenAccountPda
   );
+
   console.log(
     `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} BridgeInstruction::Construct...`
   );
@@ -72,6 +86,72 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
   console.log(
     `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} BridgeInstruction::Construct Verified...`
   );
+
+  // create source and source auth
+  const from = payer;
+  const fromTokenAccount = await SPLToken.createAccount(
+    connection,
+    payer,
+    wPoktMint,
+    payer.publicKey
+  );
+  // mint to source
+  const mintAmount = 100;
+  await SPLToken.mintTo(
+    connection,
+    payer,
+    wPoktMint,
+    fromTokenAccount,
+    payer,
+    mintAmount
+  );
+  // create account for return value
+  const calculateFeeAccount = Keypair.generate();
+  const createCalculateFeeAccountIx = SystemProgram.createAccount({
+    programId: SystemProgram.programId,
+    space: CalcuateFeeResultLayout.span,
+    lamports: await connection.getMinimumBalanceForRentExemption(
+      CalcuateFeeResultLayout.span
+    ),
+    fromPubkey: from.publicKey,
+    newAccountPubkey: calculateFeeAccount.publicKey,
+  });
+  let tx = new Transaction().add(createCalculateFeeAccountIx);
+  await sendAndConfirmTransaction(connection, tx, [payer, calculateFeeAccount]);
+
+  await Bridge.transferRequest(
+    connection,
+    programId,
+    payer,
+    bridgePda,
+    tokenListPda,
+    wPoktMint,
+    fromTokenAccount,
+    calculateFeeAccount.publicKey,
+    bridgeWpoktTokenAccountPda,
+    from,
+    tokenIndex,
+    bridgeWpoktTokenAccountPda,
+    mintAmount / 2,
+    chainId + 1
+  );
+  console.log(
+    `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} BridgeInstruction::TransferRequest...`
+  );
+
+  await Bridge.verifyTransferRequest(
+    connection,
+    bridgePda,
+    fromTokenAccount,
+    bridgeWpoktTokenAccountPda,
+    mintAmount / 2,
+    mintAmount / 2,
+    2
+  );
+  console.log(
+    `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} BridgeInstruction::TransferRequest Verified...`
+  );
+  // get bridge account to verigfy
 }
 
 async function main() {

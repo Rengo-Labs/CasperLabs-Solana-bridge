@@ -9,7 +9,6 @@ import {
   Transaction,
 } from "@solana/web3.js";
 import { BN } from "bn.js";
-import { off } from "process";
 import * as BridgeInstruction from "./instructions";
 import {
   BRIDGE_LAYOUT,
@@ -17,6 +16,7 @@ import {
   TOKEN_LIST_DICTIONARY_LAYOUT,
 } from "./state";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import * as SPLToken from "@solana/spl-token";
 
 export const generateBridgeTokenAcccountPda = async (
   connection: Connection,
@@ -211,6 +211,87 @@ export const verifyConstruction = async (
   );
 };
 
+export const transferRequest = async (
+  connection: Connection,
+  programId: PublicKey,
+  payer: Keypair,
+  bridgePda: PublicKey,
+  tokenListPda: PublicKey,
+  mintAccount: PublicKey,
+  fromTokenAccount: PublicKey,
+  calculateFeeAccount: PublicKey,
+  bridgeTokenAccount: PublicKey,
+  fromAuth: Keypair,
+  tokenIndex: number,
+  to: PublicKey,
+  amount: number,
+  chainId: number
+) => {
+  const data = Buffer.alloc(BridgeInstruction.TRANSFER_REQUEST_LAYOUT.span);
+
+  BridgeInstruction.TRANSFER_REQUEST_LAYOUT.encode(
+    {
+      instruction: BridgeInstruction.BridgeInstruction.TransferRequest,
+      tokenIndex,
+      to,
+      amount,
+      chainId,
+    },
+    data
+  );
+
+  const ix = new TransactionInstruction({
+    programId,
+    keys: [
+      // { pubkey: payer.publicKey, isSigner: true, isWritable: false },
+      { pubkey: bridgePda, isSigner: false, isWritable: true },
+      { pubkey: tokenListPda, isSigner: false, isWritable: true },
+      { pubkey: mintAccount, isSigner: false, isWritable: true },
+      { pubkey: fromTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: calculateFeeAccount, isSigner: false, isWritable: true },
+      { pubkey: bridgeTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: fromAuth.publicKey, isSigner: true, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+
+  const tx = new Transaction().add(ix);
+  return await sendAndConfirmTransaction(connection, tx, [payer, fromAuth]);
+};
+
+export const verifyTransferRequest = async (
+  connection: Connection,
+  bridgePda: PublicKey,
+  sourceToken: PublicKey,
+  bridgeTokenPda: PublicKey,
+  sourceTokenExpectedBalance: number,
+  bridgeTokenExpectedBalance: number,
+  currentIndex: number
+) => {
+  const bridgeData = await getBridgePdaData(connection, bridgePda);
+  const sourceTokenData = await SPLToken.getAccount(connection, sourceToken);
+  const bridgeTokenData = await SPLToken.getAccount(connection, bridgeTokenPda);
+
+  if (bridgeData.currentIndex !== currentIndex) {
+    throw Error(
+      `TSX - verifyTransferRequest(): Invalid current index: ${bridgeData.currentIndex}`
+    );
+  }
+
+  if (sourceTokenData.amount !== BigInt(sourceTokenExpectedBalance)) {
+    throw Error(
+      `TSX - verifyTransferRequest(): Unequal Source token balance: ${sourceTokenData.amount}`
+    );
+  }
+
+  if (bridgeTokenData.amount !== BigInt(bridgeTokenExpectedBalance)) {
+    throw Error(
+      `TSX - verifyTransferRequest(): Unequal Source token balance: ${bridgeTokenData.amount}`
+    );
+  }
+};
+
 export const verifyTokenAddedData = async (
   connection: Connection,
   tokenAddedPda: PublicKey,
@@ -218,7 +299,7 @@ export const verifyTokenAddedData = async (
 ) => {
   const data = await getTokenAddedPdaData(connection, tokenAddedPda);
   if (!data.tokenAdded) {
-    throw Error(`Token not added`);
+    throw Error(`TSX - verifyTokenAddedData(): Token not added`);
   }
 };
 
@@ -231,14 +312,18 @@ export const verifyTokenListData = async (
 ) => {
   const data = await getTokenListPdaData(connection, tokenListAccount);
   if (data.isInitialized !== isInitialized) {
-    throw Error(`Bridge account Initialization status: ${data.isInitialized}`);
+    throw Error(
+      `TSX - verifyTokenListData(): Bridge account Initialization status: ${data.isInitialized}`
+    );
   }
   if (data.exists !== exists) {
-    throw Error(`Bridge account Initialization status: ${data.isInitialized}`);
+    throw Error(
+      `TSX - verifyTokenListData(): Bridge account Initialization status: ${data.isInitialized}`
+    );
   }
   if (!data.tokenAddress.equals(tokenAddress)) {
     throw Error(
-      `Verify Token Invalid Token Address: ${data.tokenAddress.toBase58()}`
+      `TSX - verifyTokenListData(): Verify Token Invalid Token Address: ${data.tokenAddress.toBase58()}`
     );
   }
 };
@@ -258,10 +343,12 @@ export const verifyBridgeData = async (
   const bridge = await getBridgePdaData(connection, bridgeAccountAddress);
   if (bridge.isInitialized !== isInitialized) {
     throw Error(
-      `Bridge account Initialization status: ${bridge.isInitialized}`
+      `TSX - verifyBridgeData(): Bridge account Initialization status: ${bridge.isInitialized}`
     );
   }
   if (!bridge.owner.equals(owner)) {
-    throw Error(`Bridge account Invalid Owner: ${bridge.owner.toBase58()}`);
+    throw Error(
+      `TSX - verifyBridgeData(): Bridge account Invalid Owner: ${bridge.owner.toBase58()}`
+    );
   }
 };

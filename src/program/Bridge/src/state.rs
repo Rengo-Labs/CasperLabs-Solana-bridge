@@ -1,15 +1,10 @@
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
-use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     msg,
     program_error::ProgramError,
     program_pack::{IsInitialized, Pack, Sealed},
     pubkey::Pubkey,
 };
-
-const INITIALIZED_BYTES: usize = 1;
-const TRACKING_CHUNK_LENGTH: usize = 4;
-const TRACKING_CHUNK_BYTES: usize = 10235;
 
 pub trait GeneratePdaKey {
     fn generate_pda_key(program_id: &Pubkey, seeds: &Vec<&[u8]>) -> (Pubkey, u8);

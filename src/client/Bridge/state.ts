@@ -81,3 +81,9 @@ export interface TokenAddedAccount {
 export const TOKEN_ADDED_ACCOUNT_LAYOUT = struct<TokenAddedAccount>([
   bool("tokenAdded"),
 ]);
+
+export interface CalcuateFeeResult {
+  fee: number;
+}
+
+export const CalcuateFeeResultLayout = struct<CalcuateFeeResult>([nu64("fee")]);

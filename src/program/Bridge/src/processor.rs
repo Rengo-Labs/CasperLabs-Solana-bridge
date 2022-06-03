@@ -1,6 +1,7 @@
 // use crate::error::BridgeError;
 use crate::error::BridgeError;
 use crate::instruction::BridgeInstruction;
+use crate::state::CalcuateFeeResult;
 use crate::state::{
     Bridge, ClaimedDictionary, DailyTokenClaimsDictionary, TokenAddedDictionary,
     TokenListDictionary,
@@ -55,7 +56,10 @@ impl Processor {
                 to,
                 amount,
                 chain_id,
-            } => transfer_request(program_id, accounts, token_index, to, amount, chain_id),
+            } => {
+                msg!("BridgeInstruction::TransferRequest");
+                transfer_request(program_id, accounts, token_index, to, amount, chain_id)
+            }
             BridgeInstruction::TransferReceipt {
                 token_index,
                 from,
@@ -245,6 +249,7 @@ fn construct(
     bridge_data.chain_id = *_chain_id;
     bridge_data.verify_address = *_verify_address;
     bridge_data.is_initialized = true;
+    bridge_data.current_index += 1;
     bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
 
     // create and initialize TokenAdded dictionary item account
@@ -400,117 +405,83 @@ fn transfer_request(
     _amount: u64,
     _chain_id: u64,
 ) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let bridge_account = next_account_info(account_info_iter)?; // PDA acount
-    // let token_list_account = next_account_info(account_info_iter)?;
-    // let mint_account = next_account_info(account_info_iter)?;
-    // let source_account = next_account_info(account_info_iter)?;
-    // let calculate_fee_result_account = next_account_info(account_info_iter)?;
-    // let bridge_token_account = next_account_info(account_info_iter)?;
-    // let source_account_owner_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let bridge_account = next_account_info(account_info_iter)?; // PDA acount
+    let token_list_account = next_account_info(account_info_iter)?;
+    let mint_account = next_account_info(account_info_iter)?;
+    let source_account = next_account_info(account_info_iter)?;
+    let calculate_fee_result_account = next_account_info(account_info_iter)?;
+    let bridge_token_account = next_account_info(account_info_iter)?;
+    let source_auth_account = next_account_info(account_info_iter)?;
 
-    // if !source_account_owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    if !source_auth_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    // let mut token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+    let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
 
-    // verify_program_accounts_initialization(
-    //     Some(&bridge_data),
-    //     None,
-    //     None,
-    //     Some(&token_list_data),
-    //     None,
-    //     true,
-    // )?;
+    if token_list_data.token_address != *mint_account.key {
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
-    // if token_list_data
-    //     .token_list_dictionary
-    //     .contains_key(&_token_index)
-    //     == false
-    // {
-    //     return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
-    // }
+    if token_list_data.paused {
+        return Err(ProgramError::Custom(BridgeError::TokenAlreadyPaused as u32));
+    }
+    if _chain_id == bridge_data.chain_id {
+        return Err(ProgramError::Custom(BridgeError::RequestToSameChain as u32));
+    }
 
-    // let mut token_data: TokenData = TokenData::try_from_slice(
-    //     &token_list_data
-    //         .token_list_dictionary
-    //         .get(&_token_index)
-    //         .unwrap(),
-    // )
-    // .unwrap();
-    // if token_data.token_address != *mint_account.key {
-    //     return Err(ProgramError::InvalidInstructionData);
-    // }
+    update_fees(
+        _program_id,
+        &[bridge_account.clone(), token_list_account.clone()],
+        _token_index,
+    )?;
+    // get the fee calculated
+    calculate_fee(
+        _program_id,
+        &[
+            bridge_account.clone(),
+            token_list_account.clone(),
+            calculate_fee_result_account.clone(),
+        ],
+        _token_index,
+        _amount,
+    )?;
+    let calculate_fee_result_data =
+        CalcuateFeeResult::unpack_from_slice(&calculate_fee_result_account.data.borrow())?;
+    let fee = calculate_fee_result_data.fee;
 
-    // if token_data.paused {
-    //     return Err(ProgramError::Custom(BridgeError::TokenAlreadyPaused as u32));
-    // }
-    // if _chain_id == bridge_data.chain_id {
-    //     return Err(ProgramError::Custom(BridgeError::RequestToSameChain as u32));
-    // }
+    // tokenData.totalFeesCollected = tokenData.totalFeesCollected.add(_fee);
+    token_list_data.total_fees_collected = token_list_data
+        .total_fees_collected
+        .checked_add(fee)
+        .ok_or(ProgramError::Custom(BridgeError::Overflow as u32))
+        .unwrap();
+    let transfer_from_ix = spl_token::instruction::transfer(
+        &spl_token::id(),
+        source_account.key,
+        bridge_token_account.key,
+        source_auth_account.key,
+        &[&source_auth_account.key],
+        _amount,
+    )?;
 
-    // update_fees(
-    //     _program_id,
-    //     &[bridge_account.clone(), token_list_account.clone()],
-    //     _token_index,
-    // )?;
+    // source auth account can also be the delegate
+    program::invoke(
+        &transfer_from_ix,
+        &[
+            source_account.clone(),
+            mint_account.clone(),
+            bridge_token_account.clone(),
+            source_auth_account.clone(),
+        ],
+    )?;
+    bridge_data.current_index += 1;
 
-    // // get the fee calculated
-    // calculate_fee(
-    //     _program_id,
-    //     &[
-    //         bridge_account.clone(),
-    //         token_list_account.clone(),
-    //         calculate_fee_result_account.clone(),
-    //     ],
-    //     _token_index,
-    //     _amount,
-    // )?;
-
-    // let calculate_fee_result_data =
-    //     CalcuateFeeResult::unpack_from_slice(&calculate_fee_result_account.data.borrow())?;
-    // let fee = calculate_fee_result_data.fee;
-
-    // // tokenData.totalFeesCollected = tokenData.totalFeesCollected.add(_fee);
-    // token_data.total_fees_collected = token_data
-    //     .total_fees_collected
-    //     .checked_add(fee)
-    //     .ok_or(ProgramError::Custom(BridgeError::Overflow as u32))
-    //     .unwrap();
-
-    // let _ = token_list_data
-    //     .token_list_dictionary
-    //     .insert(_token_index, token_data.try_to_vec().unwrap());
-
-    // // CPI to transfer tokens from transaction sender to bridge program token account
-    // let mint_data = spl_token::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
-    // let transfer_from_ix = spl_token::instruction::transfer_checked(
-    //     &spl_token::id(),
-    //     source_account.key,
-    //     mint_account.key,
-    //     bridge_token_account.key,
-    //     source_account_owner_account.key,
-    //     &[&source_account_owner_account.key],
-    //     _amount,
-    //     mint_data.decimals,
-    // )?;
-
-    // program::invoke(
-    //     &transfer_from_ix,
-    //     &[
-    //         source_account.clone(),
-    //         mint_account.clone(),
-    //         bridge_token_account.clone(),
-    //         source_account_owner_account.clone(),
-    //     ],
-    // )?;
-    // bridge_data.current_index += 1;
-
-    // token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
-    // bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
+    token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+    bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
     Ok(())
 }
 
