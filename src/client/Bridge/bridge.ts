@@ -16,6 +16,22 @@ import {
   TOKEN_ADDED_ACCOUNT_LAYOUT,
   TOKEN_LIST_DICTIONARY_LAYOUT,
 } from "./state";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+
+export const generateBridgeTokenAcccountPda = async (
+  connection: Connection,
+  programId: PublicKey,
+  mintAccount: PublicKey
+): Promise<[PublicKey, number]> => {
+  const seeds: Uint8Array[] = [
+    mintAccount.toBytes(),
+    Buffer.from("bridge"),
+    Buffer.from("bridge_token_account"),
+  ];
+
+  const [pda, seedBump] = await PublicKey.findProgramAddress(seeds, programId);
+  return [pda, seedBump];
+};
 export const generateBridgePda = async (
   programId: PublicKey
 ): Promise<[PublicKey, number]> => {
@@ -136,7 +152,8 @@ export const construct = async (
   wPoktMint: PublicKey,
   verifyAddress: PublicKey,
   chainId: number,
-  stableFee: number
+  stableFee: number,
+  bridgeTokenAccountPda: PublicKey
 ) => {
   const data = Buffer.alloc(BridgeInstruction.CONSTRUCT_LAYOUT.span);
   BridgeInstruction.CONSTRUCT_LAYOUT.encode(
@@ -159,6 +176,9 @@ export const construct = async (
       { pubkey: tokenListAccount, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      { pubkey: bridgeTokenAccountPda, isSigner: false, isWritable: true },
+      { pubkey: wPoktMint, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
     data,
   });

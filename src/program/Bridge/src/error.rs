@@ -28,6 +28,8 @@ pub enum BridgeError {
     AlreadyClaimed,
     #[error("Cannot claim above daily limit.")]
     ClaimAboveDailyLimit,
+    #[error("Bridge Token account key mismatch.")]
+    TokenAccountKeyMismatch,
 }
 
 impl From<BridgeError> for ProgramError {

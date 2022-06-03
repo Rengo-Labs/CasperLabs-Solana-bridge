@@ -6,7 +6,7 @@ use crate::state::{
     TokenListDictionary,
 };
 use borsh::BorshDeserialize;
-use solana_program::program_pack::{Pack};
+use solana_program::program_pack::Pack;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::{Clock, SECONDS_PER_DAY},
@@ -199,10 +199,18 @@ fn construct(
     let token_list_account = next_account_info(account_info_iter)?;
     let system_program_account = next_account_info(account_info_iter)?;
     let rent_system_account = next_account_info(account_info_iter)?;
+    let bridge_token_account = next_account_info(account_info_iter)?;
+    let w_pokt_mint_account = next_account_info(account_info_iter)?;
+    let token_program_account = next_account_info(account_info_iter)?;
+
     let rent_sysvar = Rent::from_account_info(rent_system_account)?;
 
     if !owner_account.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    if !w_pokt_mint_account.key.eq(_w_pokt_address) {
+        return Err(ProgramError::InvalidArgument);
     }
 
     // create Bridge PDA account
@@ -228,7 +236,7 @@ fn construct(
         ],
         &[&[bridge_seed1.as_ref(), bridge_seed2.as_ref(), &[bridge_bump]]],
     )?;
-    msg!("Bridge account created.");
+
     // initialize bridge pda account
     let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
     bridge_data.owner = *owner_account.key;
@@ -238,7 +246,6 @@ fn construct(
     bridge_data.verify_address = *_verify_address;
     bridge_data.is_initialized = true;
     bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
-    msg!("Bridge account initialized.");
 
     // create and initialize TokenAdded dictionary item account
     let (token_added_pda, token_added_bump, token_added_seed1, token_added_seed2) =
@@ -268,13 +275,11 @@ fn construct(
             &[token_added_bump],
         ]],
     )?;
-    msg!("TokenAdded account created.");
 
     let mut token_added_data =
         TokenAddedDictionary::unpack_from_slice(&token_added_account.data.borrow())?;
     token_added_data.token_added = true;
     token_added_data.pack_into_slice(&mut &mut token_added_account.data.borrow_mut()[..]);
-    msg!("TokenAdded initialized.");
 
     // // create and initialize TokenList dictionary item account
     let index: u64 = 1;
@@ -306,7 +311,7 @@ fn construct(
             &[token_list_bump],
         ]],
     )?;
-    msg!("TokenList account created.");
+
     let clock = Clock::get()?;
     let current_timestamp = clock.unix_timestamp;
     let token_data_list = TokenListDictionary {
@@ -328,9 +333,61 @@ fn construct(
         limit_timestamp: current_timestamp as u64 + SECONDS_PER_DAY,
     };
     token_data_list.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
-    msg!("Token list account initialized.");
-    // let mut token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+
+    // create Bridge Token account associated with WPokt Mint
+    let (bridge_token_pda, bridge_token_bump, bridge_token_seed1, bridge_token_seed2) =
+        generate_bridge_token_pda(_program_id, _w_pokt_address);
+    if !bridge_token_account.key.eq(&bridge_token_pda) {
+        return Err(ProgramError::Custom(
+            BridgeError::TokenAccountKeyMismatch as u32,
+        ));
+    }
+
+    let create_token_account_is = system_instruction::create_account(
+        owner_account.key,
+        bridge_token_account.key,
+        rent_sysvar.minimum_balance(spl_token::state::Account::LEN),
+        spl_token::state::Account::LEN.try_into().unwrap(),
+        &spl_token::id(),
+    );
+    program::invoke_signed(
+        &create_token_account_is,
+        &[
+            bridge_token_account.clone(),
+            owner_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[&[
+            _w_pokt_address.as_ref(),
+            bridge_token_seed1.as_ref(),
+            bridge_token_seed2.as_ref(),
+            &[bridge_token_bump],
+        ]],
+    )?;
+
+    // initialize Bridge Token Account
+    let initialize_token_account_ix = spl_token::instruction::initialize_account2(
+        &spl_token::id(),
+        bridge_token_account.key,
+        w_pokt_mint_account.key,
+        bridge_account.key,
+    )?;
+
+    program::invoke_signed(
+        &initialize_token_account_ix,
+        &[
+            bridge_token_account.clone(),
+            token_program_account.clone(),
+            w_pokt_mint_account.clone(),
+            rent_system_account.clone(),
+        ],
+        &[&[
+            _w_pokt_address.as_ref(),
+            bridge_token_seed1.as_ref(),
+            bridge_token_seed2.as_ref(),
+            &[bridge_token_bump],
+        ]],
+    )?;
 
     Ok(())
 }
@@ -1480,3 +1537,15 @@ fn only_owner(_owner_account: &AccountInfo, bridge_data: &Bridge) -> ProgramResu
 //         _program_id, *_mint_account.key, *_mint_account.owner, mint_data.decimals
 //     )
 // }
+
+fn generate_bridge_token_pda(_program_id: &Pubkey, mint: &Pubkey) -> (Pubkey, u8, String, String) {
+    let seed1 = "bridge";
+    let seed2 = "bridge_token_account";
+    let seeds = &[
+        mint.as_ref(),
+        seed1.as_bytes().as_ref(),
+        seed2.as_bytes().as_ref(),
+    ];
+    let (pda, bump) = Pubkey::find_program_address(seeds, _program_id);
+    return (pda, bump, seed1.to_string(), seed2.to_string());
+}

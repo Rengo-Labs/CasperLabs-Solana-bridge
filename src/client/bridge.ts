@@ -39,7 +39,12 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
     await Bridge.generateTokenListDictionaryPda(programId, 1);
   const [tokenAddedPda, tokenAddedBump] =
     await Bridge.generateTokenAddedDictionaryPda(programId, wPoktMint);
-
+  const [bridgeWpoktTokenAccountPda, bridgeWpoktTokenAccountBump] =
+    await Bridge.generateBridgeTokenAcccountPda(
+      connection,
+      programId,
+      wPoktMint
+    );
   await Bridge.construct(
     connection,
     programId,
@@ -50,16 +55,24 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
     wPoktMint,
     payer.publicKey,
     1,
-    1
+    1,
+    bridgeWpoktTokenAccountPda
   );
   console.log(
     `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} BridgeInstruction::Construct...`
   );
-  
-  await Bridge.verifyConstruction(connection, payer.publicKey, bridgePda, tokenListPda, wPoktMint);
+
+  await Bridge.verifyConstruction(
+    connection,
+    payer.publicKey,
+    bridgePda,
+    tokenListPda,
+    wPoktMint
+  );
   console.log(
     `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} BridgeInstruction::Construct Verified...`
-  );}
+  );
+}
 
 async function main() {
   const connection: Connection = await establishConnection();
