@@ -22,4 +22,7 @@ This will output the `.so` shared object file and the program ids to `target/bpf
 
 ## Deployment
 Deployment payer, target network, and the program id's of the deployment are subject to the configuration of your solana CLI.
+`solana config get` will display your current configuration.
 Detailed steps to configure said CLI are provided by Solana [here](https://docs.solana.com/cli/deploy-a-program).
+
+Once your Solana CLI config is set as desired, `npm run deploy` will deploy all programs in this repository.
