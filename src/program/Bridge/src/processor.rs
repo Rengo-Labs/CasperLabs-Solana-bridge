@@ -203,7 +203,6 @@ fn construct(
     _chain_id: &u64,
     _stable_fee: &u64,
 ) -> ProgramResult {
-    verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
     let account_info_iter = &mut _accounts.iter();
     let owner_account = next_account_info(account_info_iter)?;
     let bridge_account = next_account_info(account_info_iter)?; // PDA account
@@ -413,6 +412,7 @@ fn transfer_request(
     _amount: u64,
     _chain_id: u64,
 ) -> ProgramResult {
+    verify_program_accounts_ownership(_program_id, _accounts[0..2].as_ref())?;
     let account_info_iter = &mut _accounts.iter();
     let bridge_account = next_account_info(account_info_iter)?; // PDA acount
     let token_list_account = next_account_info(account_info_iter)?;
@@ -504,6 +504,7 @@ fn transfer_receipt(
     _index: u64,
     _signature_account: &Pubkey,
 ) -> ProgramResult {
+    verify_program_accounts_ownership(_program_id, _accounts[1..5].as_ref())?;
     let account_info_iter = &mut _accounts.iter();
     let destination_auth = next_account_info(account_info_iter)?; // The account the submitting and paying for the transaction
     let bridge_account = next_account_info(account_info_iter)?; // PDA Account
@@ -609,23 +610,24 @@ fn update_verify_address(
     _accounts: &[AccountInfo],
     _verify_address: &Pubkey,
 ) -> ProgramResult {
-    // verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?;
 
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let bridge_account = next_account_info(account_info_iter)?;
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // if !owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    if !bridge_account.owner.eq(_program_id) {
+        return Err(ProgramError::IllegalOwner);
+    }
 
-    // let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
 
-    // verify_program_accounts_initialization(Some(&bridge_data), None, None, None, None, true)?;
-    // only_owner(&owner_account, &bridge_data)?;
+    only_owner(&owner_account, &bridge_data)?;
 
-    // bridge_data.verify_address = *_verify_address;
-    // bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
+    bridge_data.verify_address = *_verify_address;
+    bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -635,48 +637,30 @@ fn update_token_limit(
     _token_index: u64,
     _limit: u64,
 ) -> ProgramResult {
-    // verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
+    verify_program_accounts_ownership(_program_id, _accounts[1..3].as_ref())?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
 
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let bridge_account = next_account_info(account_info_iter)?;
-    // let token_list_account = next_account_info(account_info_iter)?;
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // if !owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
 
-    // let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    // let mut token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+    only_owner(&owner_account, &bridge_data)?;
 
-    // verify_program_accounts_initialization(
-    //     Some(&bridge_data),
-    //     None,
-    //     None,
-    //     Some(&token_list_data),
-    //     None,
-    //     true,
-    // )?;
-    // only_owner(&owner_account, &bridge_data)?;
+    let (token_list_pda, _, _, _) =
+        TokenListDictionary::generate_pda_key(_program_id, _token_index);
+    if !token_list_account.key.eq(&token_list_pda) {
+        return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
+    }
 
-    // if !token_list_data
-    //     .token_list_dictionary
-    //     .contains_key(&_token_index)
-    // {
-    //     return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
-    // }
-    // let ret: &Vec<u8> = token_list_data
-    //     .token_list_dictionary
-    //     .get(&_token_index)
-    //     .unwrap();
-    // let mut ret: TokenData = TokenData::try_from_slice(ret)?;
-    // ret.limit = _limit;
-    // let ret: Vec<u8> = ret.try_to_vec()?;
-    // let _ = token_list_data
-    //     .token_list_dictionary
-    //     .insert(_token_index, ret);
-    // token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+    token_list_data.limit = _limit;
+    token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -686,48 +670,30 @@ fn set_token_limit_time(
     _token_index: u64,
     _timestamp: u64,
 ) -> ProgramResult {
-    // verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
+    verify_program_accounts_ownership(_program_id, _accounts[1..3].as_ref())?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
 
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let bridge_account = next_account_info(account_info_iter)?;
-    // let token_list_account = next_account_info(account_info_iter)?;
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // if !owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
 
-    // let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    // let mut token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+    only_owner(&owner_account, &bridge_data)?;
 
-    // verify_program_accounts_initialization(
-    //     Some(&bridge_data),
-    //     None,
-    //     None,
-    //     Some(&token_list_data),
-    //     None,
-    //     true,
-    // )?;
-    // only_owner(&owner_account, &bridge_data)?;
+    let (token_list_pda, _, _, _) =
+        TokenListDictionary::generate_pda_key(_program_id, _token_index);
+    if !token_list_account.key.eq(&token_list_pda) {
+        return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
+    }
 
-    // if !token_list_data
-    //     .token_list_dictionary
-    //     .contains_key(&_token_index)
-    // {
-    //     return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
-    // }
-    // let ret: &Vec<u8> = token_list_data
-    //     .token_list_dictionary
-    //     .get(&_token_index)
-    //     .unwrap();
-    // let mut ret: TokenData = TokenData::try_from_slice(ret)?;
-    // ret.limit_timestamp = _timestamp;
-    // let ret: Vec<u8> = ret.try_to_vec()?;
-    // let _ = token_list_data
-    //     .token_list_dictionary
-    //     .insert(_token_index, ret);
-    // token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+    token_list_data.limit_timestamp = _timestamp;
+    token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -736,37 +702,37 @@ fn update_stable_fee(
     _accounts: &[AccountInfo],
     _new_stable_fee: u64,
 ) -> ProgramResult {
-    // verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let bridge_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?;
 
-    // if !owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    // verify_program_accounts_initialization(Some(&bridge_data), None, None, None, None, true)?;
+    if !bridge_account.owner.eq(_program_id) {
+        return Err(ProgramError::IllegalOwner);
+    }
 
-    // only_owner(&owner_account, &bridge_data)?;
+    let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    only_owner(&owner_account, &bridge_data)?;
 
-    // let clock = Clock::get()?;
-    // let current_timestamp = clock.unix_timestamp;
+    let clock = Clock::get()?;
+    let current_timestamp = clock.unix_timestamp;
 
-    // // bridge_data.stable_fee_update_time
-    // let sum_result = bridge_data
-    //     .fee_update_duration
-    //     .checked_add(current_timestamp as u64);
+    let sum_result = bridge_data
+        .fee_update_duration
+        .checked_add(current_timestamp as u64);
 
-    // match sum_result {
-    //     None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
-    //     Some(new_stable_fee_update_time) => {
-    //         bridge_data.new_stable_fee = _new_stable_fee;
-    //         bridge_data.stable_fee_update_time = new_stable_fee_update_time;
-    //     }
-    // }
+    match sum_result {
+        None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
+        Some(new_stable_fee_update_time) => {
+            bridge_data.new_stable_fee = _new_stable_fee;
+            bridge_data.stable_fee_update_time = new_stable_fee_update_time;
+        }
+    }
 
-    // bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
+    bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -776,56 +742,48 @@ fn update_token_fee(
     _index: u64,
     _new_token_fee: u64,
 ) -> ProgramResult {
-    // verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
+    verify_program_accounts_ownership(_program_id, _accounts[1..].as_ref())?;
 
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let bridge_account = next_account_info(account_info_iter)?;
-    // let token_list_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
 
-    // if !owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    // let mut token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // verify_program_accounts_initialization(
-    //     Some(&bridge_data),
-    //     None,
-    //     None,
-    //     Some(&token_list_data),
-    //     None,
-    //     true,
-    // )?;
-    // only_owner(&owner_account, &bridge_data)?;
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
 
-    // let clock = Clock::get()?;
-    // let current_timestamp = clock.unix_timestamp;
+    only_owner(&owner_account, &bridge_data)?;
 
-    // // bridge_data.stable_fee_update_time
-    // let sum_result = bridge_data
-    //     .fee_update_duration
-    //     .checked_add(current_timestamp as u64);
+    let clock = Clock::get()?;
+    let current_timestamp = clock.unix_timestamp;
 
-    // match sum_result {
-    //     None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
-    //     Some(new_fee_update_time) => {
-    //         if !token_list_data.token_list_dictionary.contains_key(&_index) {
-    //             return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
-    //         }
-    //         let ret: &Vec<u8> = token_list_data.token_list_dictionary.get(&_index).unwrap();
-    //         let mut ret: TokenData = TokenData::try_from_slice(ret)?;
+    // bridge_data.stable_fee_update_time
+    let sum_result = bridge_data
+        .fee_update_duration
+        .checked_add(current_timestamp as u64);
 
-    //         ret.fee_update_time = new_fee_update_time;
-    //         ret.new_fee = _new_token_fee;
+    let (token_list_pda, _, _, _) = TokenListDictionary::generate_pda_key(_program_id, _index);
+    if !token_list_account.key.eq(&token_list_pda) {
+        return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
+    }
 
-    //         let ret: Vec<u8> = ret.try_to_vec()?;
-    //         let _ = token_list_data.token_list_dictionary.insert(_index, ret);
-    //         token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
-    //     }
-    // }
+    match sum_result {
+        None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
+        Some(new_fee_update_time) => {
+            token_list_data.fee_update_time = new_fee_update_time;
+            token_list_data.new_fee = _new_token_fee;
+            token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+        }
+    }
 
     Ok(())
 }
@@ -835,83 +793,71 @@ fn update_fees(
     _accounts: &[AccountInfo],
     _token_index: u64,
 ) -> ProgramResult {
-    // verify_program_accounts_ownership(_program_id, _accounts)?;
-    // _update_stable_fee(_program_id, _accounts)?;
-    // _update_token_fee(_program_id, _accounts, _token_index)?;
+    verify_program_accounts_ownership(_program_id, _accounts)?;
+    _update_stable_fee(_program_id, _accounts)?;
+    _update_token_fee(_program_id, _accounts, _token_index)?;
     Ok(())
 }
 
 fn withdraw_fees(_program_id: &Pubkey, _accounts: &[AccountInfo], _index: u64) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let owner_token_account = next_account_info(account_info_iter)?;
-    // let bridge_account = next_account_info(account_info_iter)?; // the PDA account
-    // let bridge_token_account = next_account_info(account_info_iter)?; // PDA token account c
-    // let mint_account = next_account_info(account_info_iter)?;
-    // let token_list_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let owner_token_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?; // the PDA account
+    let bridge_token_account = next_account_info(account_info_iter)?; // PDA token account
+    let mint_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
 
-    // let pda_seeds: &[&[u8]] = &[b"bridge", b"global_state_account"];
-    // let (pda, bump) = Pubkey::find_program_address(pda_seeds, _program_id);
+    let (pda, bump, seed1, seed2) = Bridge::generate_pda_key(_program_id);
 
-    // verify_program_accounts_ownership(&_program_id, _accounts[1..3].as_ref())?;
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
 
-    // let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    // let mut token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+    only_owner(owner_account, &bridge_data)?;
 
-    // only_owner(owner_account, &bridge_data)?;
+    let (token_list_pda, _, _, _) = TokenListDictionary::generate_pda_key(_program_id, _index);
+    if !token_list_account.key.eq(&token_list_pda) {
+        return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
+    }
 
-    // if !token_list_data.token_list_dictionary.contains_key(&_index) {
-    //     return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
-    // }
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
 
-    // let mut token_data =
-    //     TokenData::try_from_slice(&token_list_data.token_list_dictionary.get(&_index).unwrap())
-    //         .unwrap();
+    if !(token_list_data.total_fees_collected > 0) {
+        return Err(ProgramError::Custom(BridgeError::NothingToWithdraw as u32));
+    }
 
-    // if !(token_data.total_fees_collected > 0) {
-    //     return Err(ProgramError::Custom(BridgeError::NothingToWithdraw as u32));
-    // }
+    let to_transfer = token_list_data.total_fees_collected;
+    token_list_data.total_fees_collected = 0;
 
-    // let to_transfer = token_data.total_fees_collected;
-    // token_data.total_fees_collected = 0;
+    if token_list_data.token_address != *mint_account.key {
+        return Err(ProgramError::InvalidAccountData);
+    }
 
-    // if token_data.token_address != *mint_account.key {
-    //     return Err(ProgramError::InvalidAccountData);
-    // }
+    let pda_seeds: &[&[u8]] = &[seed1.as_bytes(), seed2.as_bytes(), &[bump]];
+    let mint_data = spl_token::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
+    let transfer_ix = spl_token::instruction::transfer_checked(
+        &spl_token::id(),
+        bridge_token_account.key,
+        mint_account.key,
+        owner_token_account.key,
+        &pda,
+        &[&pda],
+        to_transfer,
+        mint_data.decimals,
+    )?;
 
-    // let mint_data = spl_token::state::Mint::unpack_from_slice(&mint_account.data.borrow())?;
+    program::invoke_signed(
+        &transfer_ix,
+        &[
+            bridge_token_account.clone(),
+            mint_account.clone(),
+            owner_token_account.clone(),
+            bridge_account.clone(),
+        ],
+        &[pda_seeds],
+    )?;
 
-    // let pda_seeds: &[&[u8]] = &[b"bridge", b"global_state_account", &[bump]];
-
-    // let transfer_ix = spl_token::instruction::transfer_checked(
-    //     &spl_token::id(),
-    //     bridge_token_account.key,
-    //     mint_account.key,
-    //     owner_token_account.key,
-    //     &pda,
-    //     &[&pda],
-    //     to_transfer,
-    //     mint_data.decimals,
-    // )?;
-
-    // program::invoke_signed(
-    //     &transfer_ix,
-    //     &[
-    //         bridge_token_account.clone(),
-    //         mint_account.clone(),
-    //         owner_token_account.clone(),
-    //         bridge_account.clone(),
-    //     ],
-    //     &[pda_seeds],
-    // )?;
-
-    // let token_data: Vec<u8> = token_data.try_to_vec().unwrap();
-
-    // let _ = token_list_data
-    //     .token_list_dictionary
-    //     .insert(_index, token_data);
-    // token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+    token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -923,72 +869,113 @@ fn add_token(
     _fee: u64,
     _limit: u64,
 ) -> ProgramResult {
-    // verify_program_accounts_ownership(&_program_id, _accounts[1..].as_ref())?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?; // PDA Account
+    let token_list_account = next_account_info(account_info_iter)?; // PDA Account
+    let token_added_account = next_account_info(account_info_iter)?; // PDA Account
+    let mint = next_account_info(account_info_iter)?;
+    let rent_sysvar_account = next_account_info(account_info_iter)?;
+    let system_program_account = next_account_info(account_info_iter)?;
 
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let bridge_account = next_account_info(account_info_iter)?;
-    // let token_list_account = next_account_info(account_info_iter)?;
-    // let token_added_account = next_account_info(account_info_iter)?;
+    let rent_sysvar = Rent::from_account_info(rent_sysvar_account)?;
 
-    // if !owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    // let mut token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
-    // let mut token_added_data =
-    //     TokenAddedDictionary::unpack_from_slice(&token_added_account.data.borrow())?;
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    only_owner(&owner_account, &bridge_data)?;
 
-    // verify_program_accounts_initialization(
-    //     Some(&bridge_data),
-    //     None,
-    //     None,
-    //     Some(&token_list_data),
-    //     Some(&token_added_data),
-    //     true,
-    // )?;
-    // only_owner(&owner_account, &bridge_data)?;
+    // create and initialize TokenAdded dictionary item account
+    let (token_added_pda, token_added_bump, token_added_seed1, token_added_seed2) =
+        TokenAddedDictionary::generate_pda_key(_program_id, mint.key);
+    if !token_added_account.key.eq(&token_added_pda) {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
-    // if token_list_data.token_list_dictionary.contains_key(&_index) == true {
-    //     return Err(ProgramError::Custom(BridgeError::TokenAlreadyAdded as u32));
-    // }
+    let create_token_added_pda_ix = system_instruction::create_account(
+        owner_account.key,
+        token_added_account.key,
+        rent_sysvar.minimum_balance(TokenAddedDictionary::LEN),
+        TokenAddedDictionary::LEN.try_into().unwrap(),
+        _program_id,
+    );
+    program::invoke_signed(
+        &create_token_added_pda_ix,
+        &[
+            owner_account.clone(),
+            token_added_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[&[
+            _token_address.as_ref(),
+            token_added_seed1.as_ref(),
+            token_added_seed2.as_ref(),
+            &[token_added_bump],
+        ]],
+    )?;
 
-    // let clock = Clock::get()?;
-    // let current_timestamp = clock.unix_timestamp;
+    let mut token_added_data =
+        TokenAddedDictionary::unpack_from_slice(&token_added_account.data.borrow())?;
+    token_added_data.token_added = true;
+    token_added_data.pack_into_slice(&mut &mut token_added_account.data.borrow_mut()[..]);
 
-    // // bridge_data.stable_fee_update_time
-    // let sum_result = SECONDS_PER_DAY.checked_add(current_timestamp as u64);
+    // // create and initialize TokenList dictionary item account
+    let (token_list_pda, token_list_bump, token_list_seed1, token_list_seed2) =
+        TokenListDictionary::generate_pda_key(_program_id, _index);
 
-    // match sum_result {
-    //     None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
-    //     Some(limit_timestamp) => {
-    //         let token_data: Vec<u8> = TokenData {
-    //             token_address: _token_address,
-    //             exists: true,
-    //             paused: false,
-    //             total_fees_collected: 0,
-    //             fee: _fee,
-    //             fee_update_time: 0,
-    //             new_fee: 0,
-    //             limit: _limit,
-    //             limit_timestamp,
-    //         }
-    //         .try_to_vec()
-    //         .unwrap();
+    if !token_list_account.key.eq(&token_list_pda) {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
-    //         let _ = token_list_data
-    //             .token_list_dictionary
-    //             .insert(_index, token_data);
-    //         let _ = token_added_data
-    //             .token_added_dictionary
-    //             .insert(_token_address, true);
+    let create_token_list_pda_ix = system_instruction::create_account(
+        owner_account.key,
+        token_list_account.key,
+        rent_sysvar.minimum_balance(TokenListDictionary::LEN),
+        TokenListDictionary::LEN.try_into().unwrap(),
+        _program_id,
+    );
+    program::invoke_signed(
+        &create_token_list_pda_ix,
+        &[
+            owner_account.clone(),
+            token_list_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[&[
+            _index.to_le_bytes().as_ref(),
+            token_list_seed1.as_ref(),
+            token_list_seed2.as_ref(),
+            &[token_list_bump],
+        ]],
+    )?;
 
-    //         token_added_data.pack_into_slice(&mut &mut token_added_account.data.borrow_mut()[..]);
-    //         token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
-    //     }
-    // }
+    let clock = Clock::get()?;
+    let current_timestamp = clock.unix_timestamp;
+    let limit_timestamp = SECONDS_PER_DAY
+        .checked_add(current_timestamp as u64)
+        .unwrap();
+
+    let token_data_list = TokenListDictionary {
+        is_initialized: true,
+        token_address: _token_address,
+        exists: true,
+        paused: false,
+        // total fees collected
+        total_fees_collected: 0,
+        // current fee
+        fee: 0,
+        // fee update time
+        fee_update_time: 0,
+        // new fee
+        new_fee: 0,
+        // daily limit
+        limit: 0,
+        // daily limit time
+        limit_timestamp: limit_timestamp,
+    };
+    token_data_list.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -997,59 +984,36 @@ fn pause_token(
     _accounts: &[AccountInfo],
     _token_index: u64,
 ) -> ProgramResult {
-    // verify_program_accounts_ownership(&_program_id, _accounts[1..].as_ref())?;
+    verify_program_accounts_ownership(&_program_id, _accounts[1..].as_ref())?;
 
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let bridge_account = next_account_info(account_info_iter)?;
-    // let token_list_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
 
-    // if !owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    // let mut token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
 
-    // verify_program_accounts_initialization(
-    //     Some(&bridge_data),
-    //     None,
-    //     None,
-    //     Some(&token_list_data),
-    //     None,
-    //     true,
-    // )?;
-    // only_owner(&owner_account, &bridge_data)?;
+    only_owner(&owner_account, &bridge_data)?;
 
-    // if token_list_data
-    //     .token_list_dictionary
-    //     .contains_key(&_token_index)
-    //     == false
-    // {
-    //     return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
-    // }
+    let (token_list_pda, _, _, _) =
+        TokenListDictionary::generate_pda_key(_program_id, _token_index);
 
-    // let mut token_data: TokenData = TokenData::try_from_slice(
-    //     &token_list_data
-    //         .token_list_dictionary
-    //         .get(&_token_index)
-    //         .unwrap(),
-    // )
-    // .unwrap();
+    if !token_list_account.key.eq(&token_list_pda) {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
-    // if token_data.paused == true {
-    //     return Err(ProgramError::Custom(BridgeError::TokenAlreadyPaused as u32));
-    // }
+    if token_list_data.paused == true {
+        return Err(ProgramError::Custom(BridgeError::TokenAlreadyPaused as u32));
+    }
 
-    // token_data.paused = true;
-
-    // let _ = token_list_data
-    //     .token_list_dictionary
-    //     .insert(_token_index, token_data.try_to_vec().unwrap());
-
-    // token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
-
+    token_list_data.paused = true;
+    token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -1058,61 +1022,38 @@ fn unpause_token(
     _accounts: &[AccountInfo],
     _token_index: u64,
 ) -> ProgramResult {
-    // verify_program_accounts_ownership(&_program_id, _accounts[1..].as_ref())?;
+    verify_program_accounts_ownership(&_program_id, _accounts[1..].as_ref())?;
 
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let bridge_account = next_account_info(account_info_iter)?;
-    // let token_list_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let bridge_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
 
-    // if !owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    if !owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    // let mut token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
 
-    // verify_program_accounts_initialization(
-    //     Some(&bridge_data),
-    //     None,
-    //     None,
-    //     Some(&token_list_data),
-    //     None,
-    //     true,
-    // )?;
-    // only_owner(&owner_account, &bridge_data)?;
+    only_owner(&owner_account, &bridge_data)?;
 
-    // if token_list_data
-    //     .token_list_dictionary
-    //     .contains_key(&_token_index)
-    //     == false
-    // {
-    //     return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
-    // }
+    let (token_list_pda, _, _, _) =
+        TokenListDictionary::generate_pda_key(_program_id, _token_index);
 
-    // let mut token_data: TokenData = TokenData::try_from_slice(
-    //     &token_list_data
-    //         .token_list_dictionary
-    //         .get(&_token_index)
-    //         .unwrap(),
-    // )
-    // .unwrap();
+    if !token_list_account.key.eq(&token_list_pda) {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
-    // if token_data.paused == false {
-    //     return Err(ProgramError::Custom(
-    //         BridgeError::TokenAlreadyUnaused as u32,
-    //     ));
-    // }
+    if token_list_data.paused == false {
+        return Err(ProgramError::Custom(
+            BridgeError::TokenAlreadyUnaused as u32,
+        ));
+    }
 
-    // token_data.paused = false;
-
-    // let _ = token_list_data
-    //     .token_list_dictionary
-    //     .insert(_token_index, token_data.try_to_vec().unwrap());
-
-    // token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
-
+    token_list_data.paused = false;
+    token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -1121,68 +1062,43 @@ fn _update_daily_limit(
     _accounts: &[AccountInfo],
     _token_index: u64,
 ) -> ProgramResult {
-    // verify_program_accounts_ownership(&_program_id, _accounts.as_ref())?;
+    verify_program_accounts_ownership(&_program_id, _accounts.as_ref())?;
 
-    // let account_info_iter = &mut _accounts.iter();
-    // let token_list_account = next_account_info(account_info_iter)?;
-    // let daily_token_claims_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let token_list_account = next_account_info(account_info_iter)?;
+    let daily_token_claims_account = next_account_info(account_info_iter)?;
 
-    // let mut token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
-    // let mut daily_token_claims_data =
-    //     DailyTokenClaimsDictionary::unpack_from_slice(&daily_token_claims_account.data.borrow())?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
+    let mut daily_token_claims_data =
+        DailyTokenClaimsDictionary::unpack_from_slice(&daily_token_claims_account.data.borrow())?;
 
-    // verify_program_accounts_initialization(
-    //     None,
-    //     None,
-    //     Some(&daily_token_claims_data),
-    //     Some(&token_list_data),
-    //     None,
-    //     true,
-    // )?;
+    let (token_list_pda, _, _, _) =
+        TokenListDictionary::generate_pda_key(_program_id, _token_index);
+    let (dtc_pda, _) = DailyTokenClaimsDictionary::generate_pda_key(_program_id, _token_index);
+    if !token_list_account.key.eq(&token_list_pda) {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    if !daily_token_claims_account.key.eq(&dtc_pda) {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
-    // if token_list_data
-    //     .token_list_dictionary
-    //     .contains_key(&_token_index)
-    //     == false
-    // {
-    //     return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
-    // }
+    let clock = Clock::get()?;
+    let current_timestamp = clock.unix_timestamp;
 
-    // let mut token_data: TokenData = TokenData::try_from_slice(
-    //     &token_list_data
-    //         .token_list_dictionary
-    //         .get(&_token_index)
-    //         .unwrap(),
-    // )
-    // .unwrap();
+    if current_timestamp as u64 <= token_list_data.limit_timestamp {
+        return Ok(());
+    }
+    let limit_timestamp = SECONDS_PER_DAY
+        .checked_add(current_timestamp as u64)
+        .unwrap();
 
-    // let clock = Clock::get()?;
-    // let current_timestamp = clock.unix_timestamp;
+    token_list_data.limit_timestamp = limit_timestamp;
+    daily_token_claims_data.daily_token_claims = 0;
 
-    // if current_timestamp as u64 <= token_data.limit_timestamp {
-    //     return Ok(());
-    // }
-    // // bridge_data.stable_fee_update_time
-    // let sum_result = SECONDS_PER_DAY.checked_add(current_timestamp as u64);
-
-    // match sum_result {
-    //     None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
-    //     Some(limit_timestamp) => {
-    //         token_data.limit_timestamp = limit_timestamp;
-    //         let _ = token_list_data
-    //             .token_list_dictionary
-    //             .insert(_token_index, token_data.try_to_vec().unwrap());
-
-    //         let _ = daily_token_claims_data
-    //             .daily_token_claims_dictionary
-    //             .insert(_token_index, 0);
-
-    //         token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
-    //         daily_token_claims_data
-    //             .pack_into_slice(&mut &mut daily_token_claims_account.data.borrow_mut()[..]);
-    //     }
-    // }
+    token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+    daily_token_claims_data
+        .pack_into_slice(&mut &mut daily_token_claims_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -1193,41 +1109,29 @@ fn _update_token_fee(
     _accounts: &[AccountInfo],
     _token_index: u64,
 ) -> ProgramResult {
-    // let token_list_account = &_accounts[1];
+    let token_list_account = &_accounts[1];
 
-    // let mut token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
-    // verify_program_accounts_initialization(None, None, None, Some(&token_list_data), None, true)?;
+    let (token_list_pda, _, _, _) =
+        TokenListDictionary::generate_pda_key(_program_id, _token_index);
+    if !token_list_account.key.eq(&token_list_pda) {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
-    // if !token_list_data
-    //     .token_list_dictionary
-    //     .contains_key(&_token_index)
-    // {
-    //     return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
-    // }
-    // let token_data: &Vec<u8> = token_list_data
-    //     .token_list_dictionary
-    //     .get(&_token_index)
-    //     .unwrap();
-    // let mut token_data: TokenData = TokenData::try_from_slice(token_data)?;
+    let mut token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
 
-    // let clock = Clock::get()?;
-    // let current_timestamp = clock.unix_timestamp;
+    let clock = Clock::get()?;
+    let current_timestamp = clock.unix_timestamp;
 
-    // if token_data.fee_update_time == 0 {
-    //     return Ok(());
-    // }
+    if token_list_data.fee_update_time == 0 {
+        return Ok(());
+    }
 
-    // if current_timestamp as u64 > token_data.fee_update_time {
-    //     token_data.fee = token_data.new_fee;
-    //     token_data.fee_update_time = 0;
-
-    //     let token_data: Vec<u8> = token_data.try_to_vec()?;
-    //     let _ = token_list_data
-    //         .token_list_dictionary
-    //         .insert(_token_index, token_data);
-    //     token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
-    // }
+    if current_timestamp as u64 > token_list_data.fee_update_time {
+        token_list_data.fee = token_list_data.new_fee;
+        token_list_data.fee_update_time = 0;
+        token_list_data.pack_into_slice(&mut &mut token_list_account.data.borrow_mut()[..]);
+    }
 
     Ok(())
 }
@@ -1235,23 +1139,21 @@ fn _update_token_fee(
 /// Accounts Expected
 /// 0. `[writable]` the Bridge account
 fn _update_stable_fee(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
-    // let bridge_account: &AccountInfo = &_accounts[0];
-    // let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let bridge_account: &AccountInfo = &_accounts[0];
+    let mut bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
 
-    // verify_program_accounts_initialization(Some(&bridge_data), None, None, None, None, true)?;
+    if bridge_data.stable_fee_update_time == 0 {
+        return Ok(());
+    }
 
-    // if bridge_data.stable_fee_update_time == 0 {
-    //     return Ok(());
-    // }
+    let clock = Clock::get()?;
+    let current_timestamp = clock.unix_timestamp;
 
-    // let clock = Clock::get()?;
-    // let current_timestamp = clock.unix_timestamp;
-
-    // if current_timestamp as u64 > bridge_data.stable_fee_update_time {
-    //     bridge_data.stable_fee = bridge_data.new_stable_fee;
-    //     bridge_data.stable_fee_update_time = 0;
-    //     bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
-    // }
+    if current_timestamp as u64 > bridge_data.stable_fee_update_time {
+        bridge_data.stable_fee = bridge_data.new_stable_fee;
+        bridge_data.stable_fee_update_time = 0;
+        bridge_data.pack_into_slice(&mut &mut bridge_account.data.borrow_mut()[..]);
+    }
 
     Ok(())
 }
@@ -1262,108 +1164,84 @@ fn calculate_fee(
     _token_index: u64,
     _amount: u64,
 ) -> ProgramResult {
-    // verify_program_accounts_ownership(&_program_id, _accounts)?;
+    verify_program_accounts_ownership(&_program_id, _accounts.as_ref())?;
 
-    // let account_info_iter = &mut _accounts.iter();
-    // let bridge_account = next_account_info(account_info_iter)?;
-    // let token_list_account = next_account_info(account_info_iter)?;
-    // let calculate_fee_result_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let bridge_account = next_account_info(account_info_iter)?;
+    let token_list_account = next_account_info(account_info_iter)?;
+    let calculate_fee_result_account = next_account_info(account_info_iter)?;
 
-    // let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
-    // let token_list_data =
-    //     TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
-    // let mut calculate_fee_result_data =
-    //     CalcuateFeeResult::unpack_from_slice(&calculate_fee_result_account.data.borrow())?;
+    let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
+    let mut calculate_fee_result_data =
+        CalcuateFeeResult::unpack_from_slice(&calculate_fee_result_account.data.borrow())?;
 
-    // verify_program_accounts_initialization(
-    //     Some(&bridge_data),
-    //     None,
-    //     None,
-    //     Some(&token_list_data),
-    //     None,
-    //     true,
-    // )?;
+    let (token_list_pda, _, _, _) =
+        TokenListDictionary::generate_pda_key(_program_id, _token_index);
+    if !token_list_account.key.eq(&token_list_pda) {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
-    // if token_list_data
-    //     .token_list_dictionary
-    //     .contains_key(&_token_index)
-    //     == false
-    // {
-    //     return Err(ProgramError::Custom(BridgeError::MapKeyNotFound as u32));
-    // }
+    let token_list_data =
+        TokenListDictionary::unpack_from_slice(&token_list_account.data.borrow())?;
 
-    // let token_data: TokenData = TokenData::try_from_slice(
-    //     &token_list_data
-    //         .token_list_dictionary
-    //         .get(&_token_index)
-    //         .unwrap(),
-    // )
-    // .unwrap();
+    if token_list_data.fee != 0 {
+        if token_list_data.fee >= TEN_POW_18 {
+            calculate_fee_result_data.fee = 0;
+            calculate_fee_result_data
+                .pack_into_slice(&mut &mut calculate_fee_result_account.data.borrow_mut()[..]);
 
-    // if token_data.fee != 0 {
-    //     if token_data.fee >= TEN_POW_18 {
-    //         calculate_fee_result_data.fee = 0;
-    //         calculate_fee_result_data
-    //             .pack_into_slice(&mut &mut calculate_fee_result_account.data.borrow_mut()[..]);
+            return Ok(());
+        }
+        return match _amount.checked_mul(token_list_data.fee) {
+            None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
+            Some(product) => {
+                let quotient: u64 = product / TEN_POW_18;
+                calculate_fee_result_data.fee = quotient;
+                calculate_fee_result_data
+                    .pack_into_slice(&mut &mut calculate_fee_result_account.data.borrow_mut()[..]);
 
-    //         return Ok(());
-    //     }
-    //     return match _amount.checked_mul(token_data.fee) {
-    //         None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
-    //         Some(product) => {
-    //             let quotient: u64 = product / TEN_POW_18;
-    //             calculate_fee_result_data.fee = quotient;
-    //             calculate_fee_result_data
-    //                 .pack_into_slice(&mut &mut calculate_fee_result_account.data.borrow_mut()[..]);
+                Ok(())
+            }
+        };
+    }
 
-    //             Ok(())
-    //         }
-    //     };
-    // }
+    if bridge_data.stable_fee >= TEN_POW_18 {
+        calculate_fee_result_data.fee = 0;
+        calculate_fee_result_data
+            .pack_into_slice(&mut &mut calculate_fee_result_account.data.borrow_mut()[..]);
 
-    // if bridge_data.stable_fee >= TEN_POW_18 {
-    //     calculate_fee_result_data.fee = 0;
-    //     calculate_fee_result_data
-    //         .pack_into_slice(&mut &mut calculate_fee_result_account.data.borrow_mut()[..]);
+        return Ok(());
+    }
 
-    //     return Ok(());
-    // }
+    let result: u64 = match _amount.checked_mul(bridge_data.stable_fee) {
+        None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
+        Some(product) => product / TEN_POW_18,
+    };
 
-    // let result: u64 = match _amount.checked_mul(bridge_data.stable_fee) {
-    //     None => return Err(ProgramError::Custom(BridgeError::Overflow as u32)),
-    //     Some(product) => product / TEN_POW_18,
-    // };
-
-    // calculate_fee_result_data.fee = result;
-    // calculate_fee_result_data
-    //     .pack_into_slice(&mut &mut calculate_fee_result_account.data.borrow_mut()[..]);
+    calculate_fee_result_data.fee = result;
+    calculate_fee_result_data
+        .pack_into_slice(&mut &mut calculate_fee_result_account.data.borrow_mut()[..]);
 
     Ok(())
 }
 
 fn renounce_ownership(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let wpokt_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let wpokt_account = next_account_info(account_info_iter)?;
 
-    // if wpokt_account.owner != _program_id {
-    //     return Err(ProgramError::IncorrectProgramId);
-    // }
-    // let mut bridge_data = Bridge::unpack_from_slice(&wpokt_account.data.borrow())?;
-    // if !bridge_data.is_initialized {
-    //     return Err(ProgramError::UninitializedAccount);
-    // }
+    if wpokt_account.owner != _program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let mut bridge_data = Bridge::unpack_from_slice(&wpokt_account.data.borrow())?;
+    if !bridge_data.is_initialized {
+        return Err(ProgramError::UninitializedAccount);
+    }
 
-    // // only owner
-    // if !owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
-    // if bridge_data.owner != *owner_account.key {
-    //     return Err(ProgramError::IllegalOwner);
-    // }
+    only_owner(owner_account, &bridge_data)?;
 
-    // bridge_data.owner = Pubkey::new_from_array([0_u8; 32]);
-    // bridge_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
+    bridge_data.owner = Pubkey::new_from_array([0_u8; 32]);
+    bridge_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -1372,31 +1250,25 @@ fn transfer_ownership(
     _accounts: &[AccountInfo],
     _new_owner: Pubkey,
 ) -> ProgramResult {
-    // let account_info_iter = &mut _accounts.iter();
-    // let owner_account = next_account_info(account_info_iter)?;
-    // let wpokt_account = next_account_info(account_info_iter)?;
+    let account_info_iter = &mut _accounts.iter();
+    let owner_account = next_account_info(account_info_iter)?;
+    let wpokt_account = next_account_info(account_info_iter)?;
 
-    // if wpokt_account.owner != _program_id {
-    //     return Err(ProgramError::IncorrectProgramId);
-    // }
-    // let mut bridge_data = Bridge::unpack_from_slice(&wpokt_account.data.borrow())?;
-    // if !bridge_data.is_initialized {
-    //     return Err(ProgramError::UninitializedAccount);
-    // }
+    if wpokt_account.owner != _program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let mut bridge_data = Bridge::unpack_from_slice(&wpokt_account.data.borrow())?;
+    if !bridge_data.is_initialized {
+        return Err(ProgramError::UninitializedAccount);
+    }
 
-    // // only owner
-    // if !owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
-    // if bridge_data.owner != *owner_account.key {
-    //     return Err(ProgramError::IllegalOwner);
-    // }
+    only_owner(owner_account, &bridge_data)?;
 
-    // if _new_owner == Pubkey::new_from_array([0_u8; 32]) {
-    //     return Err(ProgramError::InvalidArgument);
-    // }
-    // bridge_data.owner = _new_owner;
-    // bridge_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
+    if _new_owner == Pubkey::new_from_array([0_u8; 32]) {
+        return Err(ProgramError::InvalidArgument);
+    }
+    bridge_data.owner = _new_owner;
+    bridge_data.pack_into_slice(&mut &mut wpokt_account.data.borrow_mut()[..]);
     Ok(())
 }
 
@@ -1501,83 +1373,28 @@ fn verify_program_accounts_ownership(
     _program_id: &Pubkey,
     _accounts: &[AccountInfo],
 ) -> ProgramResult {
-    // // verify all accounts are owned by current program
-    // for account in _accounts.into_iter() {
-    //     if account.owner != _program_id {
-    //         return Err(ProgramError::Custom(
-    //             BridgeError::AccountNotOwnedByBridge as u32,
-    //         ));
-    //     }
-    // }
-    Ok(())
-}
-
-// Verifies that all provided accounts's data has been initialized
-fn verify_program_accounts_initialization(
-    _bridge_data: Option<&Bridge>,
-    _claimed_data: Option<&ClaimedDictionary>,
-    _daily_token_claimes_data: Option<&DailyTokenClaimsDictionary>,
-    _token_list: Option<&TokenListDictionary>,
-    _token_added: Option<&TokenAddedDictionary>,
-    _status: bool,
-) -> ProgramResult {
-    // let err = match _status {
-    //     true => ProgramError::UninitializedAccount,
-    //     false => ProgramError::AccountAlreadyInitialized,
-    // };
-
-    // if _bridge_data.is_some() {
-    //     if _bridge_data.unwrap().is_initialized != _status {
-    //         return Err(err);
-    //     }
-    // }
-
-    // if _claimed_data.is_some() {
-    //     if _claimed_data.unwrap().is_initialized != _status {
-    //         return Err(err);
-    //     }
-    // }
-
-    // if _daily_token_claimes_data.is_some() {
-    //     if _daily_token_claimes_data.unwrap().is_initialized != _status {
-    //         return Err(err);
-    //     }
-    // }
-
-    // if _token_list.is_some() {
-    //     if _token_list.unwrap().is_initialized != _status {
-    //         return Err(err);
-    //     }
-    // }
-
-    // if _token_added.is_some() {
-    //     if _bridge_data.unwrap().is_initialized != _status {
-    //         return Err(err);
-    //     }
-    // }
+    // verify all accounts are owned by current program
+    for account in _accounts.into_iter() {
+        if account.owner != _program_id {
+            return Err(ProgramError::Custom(
+                BridgeError::AccountNotOwnedByBridge as u32,
+            ));
+        }
+    }
     Ok(())
 }
 
 // Verifies that Bridge account owner initiated the transaction
 fn only_owner(_owner_account: &AccountInfo, bridge_data: &Bridge) -> ProgramResult {
-    // if !_owner_account.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
+    if !_owner_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
 
-    // if bridge_data.owner != *_owner_account.key {
-    //     return Err(ProgramError::IllegalOwner);
-    // }
+    if bridge_data.owner != *_owner_account.key {
+        return Err(ProgramError::IllegalOwner);
+    }
     Ok(())
 }
-
-// fn bridge_pda_account_seed(_program_id: &Pubkey, _mint_account: &AccountInfo) -> String {
-//     let mint_data: spl_token::state::Mint =
-//         spl_token::state::Mint::unpack_from_slice(&_mint_account.data.borrow())?;
-//     format!(
-//         "{}{}{}{}",
-//         _program_id, *_mint_account.key, *_mint_account.owner, mint_data.decimals
-//     )
-// }
 
 fn generate_bridge_token_pda(_program_id: &Pubkey, mint: &Pubkey) -> (Pubkey, u8, String, String) {
     let seed1 = "bridge";

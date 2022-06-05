@@ -1,6 +1,5 @@
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
 use solana_program::{
-    msg,
     program_error::ProgramError,
     program_pack::{IsInitialized, Pack, Sealed},
     pubkey::Pubkey,
@@ -189,7 +188,6 @@ impl TokenListDictionary {
         let seed2 = "token_list_dictionary_key";
         let index_bytes = index.to_le_bytes();
         let seeds = &[index_bytes.as_ref(), seed1.as_bytes(), seed2.as_bytes()];
-        msg!("token list pda key seeds buffer: {:?}", seeds);
         let (pda, bump) = Pubkey::find_program_address(seeds, program_id);
         (pda, bump, seed1.to_string(), seed2.to_string())
     }

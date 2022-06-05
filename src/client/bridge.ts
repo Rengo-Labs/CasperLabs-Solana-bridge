@@ -31,7 +31,7 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
   const tokenIndex = 1;
   const chainId = 1;
   const stableFee = 1;
-  const index = 1;
+  const index = tokenIndex;
 
   //deploy WPOKT program
   const programId: PublicKey = await checkOrDeployProgram(
@@ -52,7 +52,7 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
   );
   const [bridgePda, bridgeBump] = await Bridge.generateBridgePda(programId);
   const [tokenListPda, tokenListBump] =
-    await Bridge.generateTokenListDictionaryPda(programId, 1);
+    await Bridge.generateTokenListDictionaryPda(programId, index);
   const [tokenAddedPda, tokenAddedBump] =
     await Bridge.generateTokenAddedDictionaryPda(programId, wPoktMint);
   const [bridgeWpoktTokenAccountPda, bridgeWpoktTokenAccountBump] =
@@ -112,7 +112,7 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
   // create account for return value
   const calculateFeeAccount = Keypair.generate();
   const createCalculateFeeAccountIx = SystemProgram.createAccount({
-    programId: SystemProgram.programId,
+    programId,
     space: CalcuateFeeResultLayout.span,
     lamports: await connection.getMinimumBalanceForRentExemption(
       CalcuateFeeResultLayout.span
@@ -230,7 +230,9 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
     chainId+1,
     index
   );
-
+  console.log(
+    `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} BridgeInstruction::TransferReceipt...`
+  );
   const claimedPdaData = await Bridge.getClaimedPdaData(connection, claimedPda);
   const dtcPdaData = await Bridge.getDailtTokenClaimsPdaData(connection, dtcPda);
 
@@ -247,6 +249,10 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
     throw Error(`TSX - bridgeTests(): toTokenData.amount !== BigInt(transferAmount)`);
 
   }
+  console.log(
+    `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} BridgeInstruction::TransferReceipt Verified...`
+  );
+
 }
 
 async function main() {
