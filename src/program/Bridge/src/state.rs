@@ -6,6 +6,9 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
+/// Seed for all PDA derived from bridge
+pub const COMMON_BASE_SEED: &str = "bridge";
+
 pub trait GeneratePdaKey {
     fn generate_pda_key(program_id: &Pubkey, seeds: &Vec<&[u8]>) -> (Pubkey, u8);
     fn get_constants() -> Vec<String>;
@@ -121,30 +124,22 @@ impl Bridge {
 pub struct ClaimedDictionary {
     pub claimed: bool,
 }
-impl GeneratePdaKey for ClaimedDictionary {
-    fn get_constants() -> Vec<String> {
-        vec![
-            String::from("bridge"),
-            String::from("claimed_dictionary_key"),
-        ]
-    }
-    /// seeds[0] chain_ud: u64
-    /// seeds[1] index: u64
-    fn generate_pda_key(program_id: &Pubkey, seeds: &Vec<&[u8]>) -> (Pubkey, u8) {
+
+impl ClaimedDictionary {
+    /// Seed for all ClaimedDictionary PDAs, alongwith COMMON_BASE_SEED
+    pub const BASE_SEED: &'static str = "claimed_dictionary_key";
+    pub fn generate_pda_key(program_id: &Pubkey, chain_id: u64, index: u64) -> (Pubkey, u8) {
         Pubkey::find_program_address(
-            &[seeds[0], seeds[1], b"bridge", b"claimed_dictionary_key"],
+            &[
+                chain_id.to_le_bytes().as_ref(),
+                index.to_le_bytes().as_ref(),
+                COMMON_BASE_SEED.as_bytes(),
+                ClaimedDictionary::BASE_SEED.as_bytes(),
+            ],
             program_id,
         )
     }
 }
-// impl ClaimedDictionary {
-//     pub fn generate_pda_seeds_vec(chain_id: u64, index: u64) -> Vec<&'static [u8]> {
-//         vec![
-//             chain_id.to_le_bytes().as_ref(),
-//             index.to_le_bytes().as_ref(),
-//         ]
-//     }
-// }
 
 impl Sealed for ClaimedDictionary {}
 impl Pack for ClaimedDictionary {
@@ -307,27 +302,19 @@ impl Pack for DailyTokenClaimsDictionary {
         *dst = self.daily_token_claims.to_le_bytes();
     }
 }
-
-impl GeneratePdaKey for DailyTokenClaimsDictionary {
-    fn get_constants() -> Vec<String> {
-        vec![
-            String::from("bridge"),
-            String::from("daily_token_claims_dictionary_key"),
-        ]
-    }
-    /// seeds[0] index: u64
-    fn generate_pda_key(program_id: &Pubkey, seeds: &Vec<&[u8]>) -> (Pubkey, u8) {
+impl DailyTokenClaimsDictionary {
+    pub const BASE_SEED: &'static str = "dtc_dictionary_key";
+    pub fn generate_pda_key(program_id: &Pubkey, index: u64) -> (Pubkey, u8) {
         Pubkey::find_program_address(
-            &[seeds[0], b"bridge", b"daily_token_claims_dictionary_key"],
+            &[
+                index.to_le_bytes().as_ref(),
+                COMMON_BASE_SEED.as_bytes(),
+                DailyTokenClaimsDictionary::BASE_SEED.as_bytes(),
+            ],
             program_id,
         )
     }
 }
-// impl DailyTokenClaimsDictionary {
-//     pub fn generate_pda_seeds_vec(index: u64) -> Vec<&'static [u8]> {
-//         vec![index.to_le_bytes().as_ref()]
-//     }
-// }
 
 #[derive(Default, Debug, Clone)]
 pub struct TokenAddedDictionary {

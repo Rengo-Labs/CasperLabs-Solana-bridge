@@ -55,30 +55,45 @@ pub enum BridgeInstruction {
     /// Accounts expected
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[writeable]` The account used as global storage of bridge
-    UpdateVerifyAddressOnlyOwner { verify_address: Pubkey },
+    UpdateVerifyAddressOnlyOwner {
+        verify_address: Pubkey,
+    },
     /// Accounts expected
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[]` The account used as global storage of bridge
     /// 2. `[writable]` The account used as 'token_list' dictionary
-    UpdateTokenLimitOnlyOwner { token_index: u64, limit: u64 },
+    UpdateTokenLimitOnlyOwner {
+        token_index: u64,
+        limit: u64,
+    },
     /// Accounts expected
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[]` The account used as global storage of bridge
     /// 2. `[writable]` The account used as 'token_list' dictionary
-    SetTokenLimitTimeOnlyOwner { token_index: u64, timestamp: u64 },
+    SetTokenLimitTimeOnlyOwner {
+        token_index: u64,
+        timestamp: u64,
+    },
     /// Accounts expected
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[writable]` The account used as global storage of bridge
-    UpdateStableFeeOnlyOwner { new_stable_fee: u64 },
+    UpdateStableFeeOnlyOwner {
+        new_stable_fee: u64,
+    },
     /// Accounts expected
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[]` The account used as global storage of bridge
     /// 2. `[ writable]` The account used as 'token_list' dictionary
-    UpdateTokenFeeOnlyOwner { index: u64, new_token_fee: u64 },
+    UpdateTokenFeeOnlyOwner {
+        index: u64,
+        new_token_fee: u64,
+    },
     /// Accounts expected
     /// 0. `[]` The account used as global storage of bridge
     /// 1. `[]` The account used as 'token_list' dictionary
-    UpdateFees { token_index: u64 },
+    UpdateFees {
+        token_index: u64,
+    },
     /// 0. `[signer, writeable]` Owner Account
     /// 1. `[writeable]` Owner Token Account
     /// 2. `[]` Bridge Account
@@ -86,7 +101,9 @@ pub enum BridgeInstruction {
     /// 4. `[writeable]` Bridge Token Account, To be created in the same transaction as WithdrawFees, authority set to Bridge PDA Account
     /// 5. `[writeable]` Mint Account at token_index
     /// 6. `[writeable]` Token List Account
-    WithdrawFeesOnlyOwner { index: u64 },
+    WithdrawFeesOnlyOwner {
+        index: u64,
+    },
     /// Accounts expected
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[]` The account used as global storage of bridge
@@ -102,19 +119,26 @@ pub enum BridgeInstruction {
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[]` The account used as global storage of bridge
     /// 2. `[writable]` The account used as 'token_list' dictionary
-    PauseTokenOnlyOwner { token_index: u64 },
+    PauseTokenOnlyOwner {
+        token_index: u64,
+    },
     /// Accounts expected
     /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
     /// 1. `[]` The account used as global storage of bridge
     /// 2. `[writable]` The account used as 'token_list' dictionary
     /// 3. `[writable]` The account used as 'daily_token_claims' dictionary
     ///
-    UnpauseTokenOnlyOwner { token_index: u64 },
+    UnpauseTokenOnlyOwner {
+        token_index: u64,
+    },
     /// Accounts expected
     /// 0. `[]` The account used as global storage of bridge
     /// 1. `[]` The account used as 'token_list' dictionary
     /// 2. `[]` The account used as 'calculate_fee_result' account
-    CalculateFee { token_index: u64, amount: u64 },
+    CalculateFee {
+        token_index: u64,
+        amount: u64,
+    },
     /// Accounts expected:
     /// 0. `[signer]` The program owner's account.
     /// 1. `[writeable]` The account used as WPokt's global state
@@ -122,5 +146,14 @@ pub enum BridgeInstruction {
     /// Accounts expected:
     /// 0. `[signer]` The program owner's account.
     /// 1. `[writeable]` The account used as WPokt's global state
-    TransferOwnership { new_owner: Pubkey },
+    TransferOwnership {
+        new_owner: Pubkey,
+    },
+    CreateClaimedDictionaryPdaAccount {
+        index: u64,
+        chain_id: u64,
+    },
+    CreateDailyTokenClaimsDictionaryPdaAccount {
+        token_index: u64,
+    },
 }

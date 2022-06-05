@@ -1,6 +1,7 @@
 import {
   Connection,
   Keypair,
+  LAMPORTS_PER_SOL,
   PublicKey,
   sendAndConfirmTransaction,
   SystemProgram,
@@ -15,6 +16,8 @@ import path from "path";
 import * as Bridge from "./Bridge/bridge";
 import * as SPLToken from "@solana/spl-token";
 import { CalcuateFeeResultLayout } from "./Bridge/state";
+import { connect } from "http2";
+import { transfer } from "@solana/spl-token";
 
 // program lib names
 const BRIDGE_LIB_NAME = "bridge";
@@ -28,6 +31,7 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
   const tokenIndex = 1;
   const chainId = 1;
   const stableFee = 1;
+  const index = 1;
 
   //deploy WPOKT program
   const programId: PublicKey = await checkOrDeployProgram(
@@ -151,7 +155,98 @@ async function bridgeTests(connection: Connection, payer: Keypair) {
   console.log(
     `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} BridgeInstruction::TransferRequest Verified...`
   );
-  // get bridge account to verigfy
+
+  const [dtcPda, dtcPdaBump] =
+    await Bridge.genereteDailyTokenClaimsDictionaryPda(programId, tokenIndex);
+  await Bridge.createDailyTokenClaimsDictionaryPdaAccount(
+    connection,
+    programId,
+    payer,
+    dtcPda,
+    tokenIndex
+  );
+
+  const [claimedPda, claimedPdaBump] =
+    await Bridge.generateClaimedDictionaryPda(programId, chainId, index);
+  await Bridge.createClaimedDictionaryPdaAccount(
+    connection,
+    programId,
+    payer,
+    claimedPda,
+    index,
+    chainId
+  );
+
+  console.log(
+    `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} DTC & Claimed Pda Accounts created...`
+  );
+
+  // create a temporary receiver system and token account
+  const toAuth = Keypair.generate();
+  await sendAndConfirmTransaction(
+    connection,
+    new Transaction().add(
+      SystemProgram.createAccount({
+        programId: SystemProgram.programId,
+        space: 1,
+        lamports: await connection.getMinimumBalanceForRentExemption(
+          1
+        ),
+        fromPubkey: payer.publicKey,
+        newAccountPubkey: toAuth.publicKey,
+      })
+    ),
+    [payer, toAuth]
+  );
+  await connection.requestAirdrop(toAuth.publicKey, 1000 * LAMPORTS_PER_SOL);
+  // // create temporary
+  const toTokenAcccount = await SPLToken.createAccount(
+    connection,
+    payer,
+    wPoktMint,
+    toAuth.publicKey
+  );
+  
+  // get fromTokenAccount current balance
+  const fromTokenData = await SPLToken.getAccount(connection, fromTokenAccount);
+  const transferAmount = Number(fromTokenData.amount);
+  console.log(
+    `TSX - bridgeTests(): ${BRIDGE_LIB_NAME} toAuth and toTokenAccount created...`
+  );
+  await Bridge.transferReceipt(
+    connection,
+    programId,
+    bridgePda,
+    tokenListPda,
+    claimedPda,
+    dtcPda,
+    wPoktMint,
+    fromTokenAccount,
+    payer,
+    tokenIndex,
+    toTokenAcccount,
+    toAuth,
+    transferAmount,
+    chainId+1,
+    index
+  );
+
+  const claimedPdaData = await Bridge.getClaimedPdaData(connection, claimedPda);
+  const dtcPdaData = await Bridge.getDailtTokenClaimsPdaData(connection, dtcPda);
+
+  if (claimedPdaData.claimed !== true) {
+    throw Error(`TSX - bridgeTests(): claimedPdaData.claimed !== true`);
+  }
+  if (dtcPdaData.dailyTokenClaims !== transferAmount){
+    throw Error(`TSX - bridgeTests(): dtcPdaData.dailyTokenClaims !== transferAmount`);
+
+  }
+
+  const toTokenData = await SPLToken.getAccount(connection, toTokenAcccount);
+  if (toTokenData.amount !== BigInt(transferAmount)){
+    throw Error(`TSX - bridgeTests(): toTokenData.amount !== BigInt(transferAmount)`);
+
+  }
 }
 
 async function main() {

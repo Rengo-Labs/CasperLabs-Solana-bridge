@@ -35,77 +35,74 @@ export enum BridgeInstruction {
   /// 7. `[signer, writeable]` receiver's associated token account for this mint.
   /// 8. `[signer]` The bridge PDA account
   TransferReceipt,
-  // /// Accounts expected
-  // /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
-  // /// 1. `[writeable]` The account used as global storage of bridge
-  // UpdateVerifyAddressOnlyOwner { verify_address: PublicKey },
-  // /// Accounts expected
-  // /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
-  // /// 1. `[]` The account used as global storage of bridge
-  // /// 2. `[writable]` The account used as 'token_list' dictionary
-  // UpdateTokenLimitOnlyOwner { token_index: number, limit: number },
-  // /// Accounts expected
-  // /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
-  // /// 1. `[]` The account used as global storage of bridge
-  // /// 2. `[writable]` The account used as 'token_list' dictionary
-  // SetTokenLimitTimeOnlyOwner { token_index: number, timestamp: number },
-  // /// Accounts expected
-  // /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
-  // /// 1. `[writable]` The account used as global storage of bridge
-  // UpdateStableFeeOnlyOwner { new_stable_fee: number },
-  // /// Accounts expected
-  // /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
-  // /// 1. `[]` The account used as global storage of bridge
-  // /// 2. `[ writable]` The account used as 'token_list' dictionary
-  // UpdateTokenFeeOnlyOwner { index: number, new_token_fee: number },
-  // /// Accounts expected
-  // /// 0. `[]` The account used as global storage of bridge
-  // /// 1. `[]` The account used as 'token_list' dictionary
-  // UpdateFees { token_index: number },
-  // /// 0. `[signer, writeable]` Owner Account
-  // /// 1. `[writeable]` Owner Token Account
-  // /// 2. `[]` Bridge Account
-  // /// 3. `[signer]` Bridge Pda Account
-  // /// 4. `[writeable]` Bridge Token Account, To be created in the same transaction as WithdrawFees, authority set to Bridge PDA Account
-  // /// 5. `[writeable]` Mint Account at token_index
-  // /// 6. `[writeable]` Token List Account
-  // WithdrawFeesOnlyOwner { index: number },
-  // /// Accounts expected
-  // /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
-  // /// 1. `[]` The account used as global storage of bridge
-  // /// 2. `[writable]` The account used as 'token_list' dictionary
-  // /// 3. `[writable]` The account used as 'token_added' dictionary
-  // AddTokenOnlyOwner {
-  //     index: number,
-  //     token_address: PublicKey,
-  //     fee: number,
-  //     limit: number,
-  // },
-  // /// Accounts expected
-  // /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
-  // /// 1. `[]` The account used as global storage of bridge
-  // /// 2. `[writable]` The account used as 'token_list' dictionary
-  // PauseTokenOnlyOwner { token_index: number },
-  // /// Accounts expected
-  // /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
-  // /// 1. `[]` The account used as global storage of bridge
-  // /// 2. `[writable]` The account used as 'token_list' dictionary
-  // /// 3. `[writable]` The account used as 'daily_token_claims' dictionary
-  // ///
-  // UnpauseTokenOnlyOwner { token_index: number },
-  // /// Accounts expected
-  // /// 0. `[]` The account used as global storage of bridge
-  // /// 1. `[]` The account used as 'token_list' dictionary
-  // /// 2. `[]` The account used as 'calculate_fee_result' account
-  // CalculateFee { token_index: number, amount: number },
-  // /// Accounts expected:
-  // /// 0. `[signer]` The program owner's account.
-  // /// 1. `[writeable]` The account used as WPokt's global state
-  // RenounceOwnership,
-  // /// Accounts expected:
-  // /// 0. `[signer]` The program owner's account.
-  // /// 1. `[writeable]` The account used as WPokt's global state
-  // TransferOwnership { new_owner: PublicKey },
+  /// Accounts expected
+  /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
+  /// 1. `[writeable]` The account used as global storage of bridge
+  UpdateVerifyAddressOnlyOwner,
+  /// Accounts expected
+  /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
+  /// 1. `[]` The account used as global storage of bridge
+  /// 2. `[writable]` The account used as 'token_list' dictionary
+  UpdateTokenLimitOnlyOwner,
+  /// Accounts expected
+  /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
+  /// 1. `[]` The account used as global storage of bridge
+  /// 2. `[writable]` The account used as 'token_list' dictionary
+  SetTokenLimitTimeOnlyOwner,
+  /// Accounts expected
+  /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
+  /// 1. `[writable]` The account used as global storage of bridge
+  UpdateStableFeeOnlyOwner,
+  /// Accounts expected
+  /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
+  /// 1. `[]` The account used as global storage of bridge
+  /// 2. `[ writable]` The account used as 'token_list' dictionary
+  UpdateTokenFeeOnlyOwner,
+  /// Accounts expected
+  /// 0. `[]` The account used as global storage of bridge
+  /// 1. `[]` The account used as 'token_list' dictionary
+  UpdateFees,
+  /// 0. `[signer, writeable]` Owner Account
+  /// 1. `[writeable]` Owner Token Account
+  /// 2. `[]` Bridge Account
+  /// 3. `[signer]` Bridge Pda Account
+  /// 4. `[writeable]` Bridge Token Account, To be created in the same transaction as WithdrawFees, authority set to Bridge PDA Account
+  /// 5. `[writeable]` Mint Account at token_index
+  /// 6. `[writeable]` Token List Account
+  WithdrawFeesOnlyOwner,
+  /// Accounts expected
+  /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
+  /// 1. `[]` The account used as global storage of bridge
+  /// 2. `[writable]` The account used as 'token_list' dictionary
+  /// 3. `[writable]` The account used as 'token_added' dictionary
+  AddTokenOnlyOwner,
+  /// Accounts expected
+  /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
+  /// 1. `[]` The account used as global storage of bridge
+  /// 2. `[writable]` The account used as 'token_list' dictionary
+  PauseTokenOnlyOwner,
+  /// Accounts expected
+  /// 0. `[signer]` The account of person initializing bridge - the 'owner'.
+  /// 1. `[]` The account used as global storage of bridge
+  /// 2. `[writable]` The account used as 'token_list' dictionary
+  /// 3. `[writable]` The account used as 'daily_token_claims' dictionary
+  ///
+  UnpauseTokenOnlyOwner,
+  /// Accounts expected
+  /// 0. `[]` The account used as global storage of bridge
+  /// 1. `[]` The account used as 'token_list' dictionary
+  /// 2. `[]` The account used as 'calculate_fee_result' account
+  CalculateFee,
+  /// Accounts expected:
+  /// 0. `[signer]` The program owner's account.
+  /// 1. `[writeable]` The account used as WPokt's global state
+  RenounceOwnership,
+  /// Accounts expected:
+  /// 0. `[signer]` The program owner's account.
+  /// 1. `[writeable]` The account used as WPokt's global state
+  TransferOwnership,
+  CreateClaimedDictionaryPdaAccount,
+  CreateDailyTokenClaimsDictionaryPdaAccount,
 }
 
 export interface Construct {
@@ -161,3 +158,26 @@ export const TRANSFER_RECEIPT_LAYOUT = struct<TransferReceipt>([
   nu64("index"),
   publicKey("signatureAccount"),
 ]);
+
+export interface CreateClaimedDictionaryPdaAccount {
+  instruction: number;
+  index: number;
+  chainId: number;
+}
+
+export const CREATE_CLAIMED_DICTIONARY_PDA_ACCOUNT_LAYOUT =
+  struct<CreateClaimedDictionaryPdaAccount>([
+    u8("instruction"),
+    nu64("index"),
+    nu64("chainId"),
+  ]);
+export interface CreateDailyTokenClaimsDictionaryPdaAccount {
+  instruction: number;
+  tokenIndex: number;
+}
+
+export const CREATE_DAILY_TOKEN_CLAIMS_DICTIONARY_PDA_ACCOUNT =
+  struct<CreateDailyTokenClaimsDictionaryPdaAccount>([
+    u8("instruction"),
+    nu64("tokenIndex"),
+  ]);

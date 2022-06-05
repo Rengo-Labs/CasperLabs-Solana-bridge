@@ -4,7 +4,7 @@ use crate::instruction::BridgeInstruction;
 use crate::state::CalcuateFeeResult;
 use crate::state::{
     Bridge, ClaimedDictionary, DailyTokenClaimsDictionary, TokenAddedDictionary,
-    TokenListDictionary,
+    TokenListDictionary, COMMON_BASE_SEED,
 };
 use borsh::BorshDeserialize;
 use solana_program::program_pack::Pack;
@@ -124,6 +124,14 @@ impl Processor {
             BridgeInstruction::RenounceOwnership => renounce_ownership(program_id, accounts),
             BridgeInstruction::TransferOwnership { new_owner } => {
                 transfer_ownership(program_id, accounts, new_owner)
+            }
+            BridgeInstruction::CreateClaimedDictionaryPdaAccount { index, chain_id } => {
+                msg!("BridgeInstruction::CreateClaimedDictionaryPdaAccount");
+                create_claimed_dictionary_pda_account(program_id, accounts, index, chain_id)
+            }
+            BridgeInstruction::CreateDailyTokenClaimsDictionaryPdaAccount { token_index } => {
+                msg!("BridgeInstruction::CreateDailyTokenClaimsDictionaryPdaAccount");
+                create_daily_token_claims_dictionary_pda_account(program_id, accounts, token_index)
             }
         }
     }
@@ -497,25 +505,35 @@ fn transfer_receipt(
     _signature_account: &Pubkey,
 ) -> ProgramResult {
     let account_info_iter = &mut _accounts.iter();
+    let destination_auth = next_account_info(account_info_iter)?; // The account the submitting and paying for the transaction
     let bridge_account = next_account_info(account_info_iter)?; // PDA Account
     let claimed_account = next_account_info(account_info_iter)?;
     let token_list_account = next_account_info(account_info_iter)?;
     let daily_token_claims_account = next_account_info(account_info_iter)?;
-    let signature_account = next_account_info(account_info_iter)?; // The account the transaction creator signed this transaction with - the Aithority of source token
-    let mint_account = next_account_info(account_info_iter)?;
+    let source_auth = next_account_info(account_info_iter)?; // The account the transaction creator signed this transaction with - the Aithority of source token
     let source_token_account = next_account_info(account_info_iter)?;
-    let receiver_token_account = next_account_info(account_info_iter)?;
+    let destination_token_account = next_account_info(account_info_iter)?;
+    let mint_account = next_account_info(account_info_iter)?;
+    let token_program_account = next_account_info(account_info_iter)?;
+
+    if !destination_auth.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    if !destination_auth.key.eq(_to) {
+        return Err(ProgramError::InvalidArgument);
+    }
 
     let (bridge_pda, _, _, _) = Bridge::generate_pda_key(_program_id);
     if !bridge_account.key.eq(&bridge_pda) {
-        return Err(ProgramError::InvalidInstructionData);
+        return Err(ProgramError::InvalidSeeds);
     }
 
-    if !signature_account.is_signer {
+    if !source_auth.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    if *signature_account.key != *_signature_account {
-        return Err(ProgramError::InvalidInstructionData);
+    if *source_auth.key != *_signature_account {
+        return Err(ProgramError::InvalidArgument);
     }
 
     let bridge_data = Bridge::unpack_from_slice(&bridge_account.data.borrow())?;
@@ -537,7 +555,6 @@ fn transfer_receipt(
     if claimed_data.claimed {
         return Err(ProgramError::Custom(BridgeError::AlreadyClaimed as u32));
     }
-
     if token_data.limit > 0 {
         _update_daily_limit(
             _program_id,
@@ -557,16 +574,13 @@ fn transfer_receipt(
     if token_data.token_address != *mint_account.key {
         return Err(ProgramError::InvalidAccountData);
     }
-    if *receiver_token_account.key != *_to {
-        return Err(ProgramError::InvalidAccountData);
-    }
 
     let transfer_ix = spl_token::instruction::transfer(
         &spl_token::id(),
         source_token_account.key,
-        receiver_token_account.key,
-        signature_account.key,
-        &[&signature_account.key],
+        destination_token_account.key,
+        source_auth.key,
+        &[&source_auth.key],
         _amount,
     )?;
 
@@ -574,8 +588,9 @@ fn transfer_receipt(
         &transfer_ix,
         &[
             source_token_account.clone(),
-            receiver_token_account.clone(),
-            signature_account.clone(),
+            destination_token_account.clone(),
+            source_auth.clone(),
+            token_program_account.clone(),
         ],
     )?;
 
@@ -1385,6 +1400,100 @@ fn transfer_ownership(
     Ok(())
 }
 
+fn create_claimed_dictionary_pda_account(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _index: u64,
+    _chain_id: u64,
+) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let payer = next_account_info(account_info_iter)?;
+    let claimed_pda_account = next_account_info(account_info_iter)?;
+    let rent_sysvar_account = next_account_info(account_info_iter)?;
+    let system_account = next_account_info(account_info_iter)?;
+
+    let (pda, bump) = ClaimedDictionary::generate_pda_key(_program_id, _chain_id, _index);
+
+    if !claimed_pda_account.key.eq(&pda) {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    let rent_sysvar = Rent::from_account_info(rent_sysvar_account)?;
+    let ix = system_instruction::create_account(
+        payer.key,
+        claimed_pda_account.key,
+        rent_sysvar.minimum_balance(ClaimedDictionary::LEN),
+        ClaimedDictionary::LEN.try_into().unwrap(),
+        _program_id,
+    );
+
+    let index_bytes = _index.to_le_bytes();
+    let chain_id_bytes = _chain_id.to_le_bytes();
+    let signature_seeds = &[
+        index_bytes.as_ref(),
+        chain_id_bytes.as_ref(),
+        COMMON_BASE_SEED.as_bytes(),
+        ClaimedDictionary::BASE_SEED.as_bytes(),
+        &[bump],
+    ];
+
+    program::invoke_signed(
+        &ix,
+        &[
+            payer.clone(),
+            claimed_pda_account.clone(),
+            system_account.clone(),
+        ],
+        &[signature_seeds],
+    )?;
+    Ok(())
+}
+
+fn create_daily_token_claims_dictionary_pda_account(
+    _program_id: &Pubkey,
+    _accounts: &[AccountInfo],
+    _token_index: u64,
+) -> ProgramResult {
+    let account_info_iter = &mut _accounts.iter();
+    let payer = next_account_info(account_info_iter)?;
+    let dtc_pda_account = next_account_info(account_info_iter)?;
+    let rent_sysvar_account = next_account_info(account_info_iter)?;
+    let system_account = next_account_info(account_info_iter)?;
+
+    let (pda, bump) = DailyTokenClaimsDictionary::generate_pda_key(_program_id, _token_index);
+
+    if !dtc_pda_account.key.eq(&pda) {
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    let rent_sysvar = Rent::from_account_info(rent_sysvar_account)?;
+    let ix = system_instruction::create_account(
+        payer.key,
+        dtc_pda_account.key,
+        rent_sysvar.minimum_balance(DailyTokenClaimsDictionary::LEN),
+        DailyTokenClaimsDictionary::LEN.try_into().unwrap(),
+        _program_id,
+    );
+
+    let index_bytes = _token_index.to_le_bytes();
+    let signature_seeds = &[
+        index_bytes.as_ref(),
+        COMMON_BASE_SEED.as_bytes(),
+        DailyTokenClaimsDictionary::BASE_SEED.as_bytes(),
+        &[bump],
+    ];
+
+    program::invoke_signed(
+        &ix,
+        &[
+            payer.clone(),
+            dtc_pda_account.clone(),
+            system_account.clone(),
+        ],
+        &[signature_seeds],
+    )?;
+    Ok(())
+}
 // ========================== Helper Functions ==================== //
 
 // Checks that all provided accounts are owned by the provided program_id
