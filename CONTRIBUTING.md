@@ -18,7 +18,7 @@ If you have feature enhancements or other requests, please feel free to file iss
 
 ## Contributing to CasperLabs Solana Bridge
 
-All contributions to this repository from September 9, 2021 on are considered to be licensed under GNU License.
+All contributions to this repository from September 9, 2021 on are considered to be licensed under Apache License.
 
 Workflow for bug fixes:
 * Check open issues and unmerged pull requests to make sure the topic is not already covered elsewhere
